@@ -70,7 +70,11 @@
 			const d = new Date(today);
 			d.setHours(0, 0, 0, 0);
 			d.setDate(d.getDate() - i);
-			const iso = d.toISOString().slice(0, 10);
+			// Use local date parts to avoid UTC offset shifting the date
+			const year = d.getFullYear();
+			const month = String(d.getMonth() + 1).padStart(2, '0');
+			const day = String(d.getDate()).padStart(2, '0');
+			const iso = `${year}-${month}-${day}`;
 			const total = recentTransactions
 				.filter((t) => t.type === 'expense' && t.date === iso)
 				.reduce((sum, t) => sum + t.amount, 0);
