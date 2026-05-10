@@ -29,13 +29,15 @@ type appServer struct {
 }
 
 type store struct {
-	mu              sync.RWMutex
-	nextTransaction int64
-	nextCategory    int64
-	nextBudgetRule  int64
-	transactions    []Transaction
-	categories      []Category
-	budgetRules     []BudgetRule
+	mu               sync.RWMutex
+	nextTransaction  int64
+	nextCategory     int64
+	nextBudgetRule   int64
+	nextSalaryMaster int64
+	transactions     []Transaction
+	categories       []Category
+	budgetRules      []BudgetRule
+	salaryMasters    []SalaryMaster
 }
 
 type loginRequest struct {
@@ -108,15 +110,30 @@ type BudgetCheck struct {
 	OverBudget bool    `json:"over_budget"`
 }
 
+type SalaryMaster struct {
+	ID     int64  `json:"id"`
+	Month  string `json:"month"`
+	Amount int64  `json:"amount"`
+	Note   string `json:"note"`
+}
+
+type salaryMasterInput struct {
+	Month  string `json:"month"`
+	Amount int64  `json:"amount"`
+	Note   string `json:"note"`
+}
+
 type dashboardSummaryResponse struct {
-	CurrentBalance  int64         `json:"current_balance"`
-	TodayExpense    int64         `json:"today_expense"`
-	MonthExpense    int64         `json:"month_expense"`
-	RemainingBudget int64         `json:"remaining_budget"`
-	MakanToday      *BudgetCheck  `json:"makan_today,omitempty"`
-	MakanMonth      *BudgetCheck  `json:"makan_month,omitempty"`
-	BensinMonth     *BudgetCheck  `json:"bensin_month,omitempty"`
-	BudgetUsage     []BudgetCheck `json:"budget_usage"`
+	CurrentBalance     int64         `json:"current_balance"`
+	SalaryCurrentMonth int64         `json:"salary_current_month"`
+	SalaryTotalToDate  int64         `json:"salary_total_to_date"`
+	TodayExpense       int64         `json:"today_expense"`
+	MonthExpense       int64         `json:"month_expense"`
+	RemainingBudget    int64         `json:"remaining_budget"`
+	MakanToday         *BudgetCheck  `json:"makan_today,omitempty"`
+	MakanMonth         *BudgetCheck  `json:"makan_month,omitempty"`
+	BensinMonth        *BudgetCheck  `json:"bensin_month,omitempty"`
+	BudgetUsage        []BudgetCheck `json:"budget_usage"`
 }
 
 type categorySpending struct {
@@ -173,6 +190,11 @@ func main() {
 		pr.Put("/budget-rules/{id}", app.handleUpdateBudgetRule)
 		pr.Delete("/budget-rules/{id}", app.handleDeleteBudgetRule)
 
+		pr.Get("/salary-masters", app.handleGetSalaryMasters)
+		pr.Post("/salary-masters", app.handleCreateSalaryMaster)
+		pr.Put("/salary-masters/{id}", app.handleUpdateSalaryMaster)
+		pr.Delete("/salary-masters/{id}", app.handleDeleteSalaryMaster)
+
 		pr.Get("/reports/monthly", app.handleMonthlyReport)
 	})
 
@@ -200,12 +222,14 @@ func newStore() *store {
 	}
 
 	return &store{
-		nextTransaction: 1,
-		nextCategory:    int64(len(categories) + 1),
-		nextBudgetRule:  int64(len(budgetRules) + 1),
-		transactions:    []Transaction{},
-		categories:      categories,
-		budgetRules:     budgetRules,
+		nextTransaction:  1,
+		nextCategory:     int64(len(categories) + 1),
+		nextBudgetRule:   int64(len(budgetRules) + 1),
+		nextSalaryMaster: 1,
+		transactions:     []Transaction{},
+		categories:       categories,
+		budgetRules:      budgetRules,
+		salaryMasters:    []SalaryMaster{},
 	}
 }
 
@@ -260,15 +284,20 @@ func (a *appServer) handleDashboardSummary(w http.ResponseWriter, r *http.Reques
 	a.store.mu.RLock()
 	defer a.store.mu.RUnlock()
 
-	var totalIncome int64
+	var additionalIncome int64
 	var totalExpense int64
 	var todayExpense int64
 	var monthExpense int64
 	monthExpenseByCategory := map[string]int64{}
+	salaryCurrentMonth := a.store.salaryForMonthLocked(month)
+	salaryTotalToDate := a.store.sumSalaryToMonthLocked(month)
 
 	for _, trx := range a.store.transactions {
 		if trx.Type == "income" {
-			totalIncome += trx.Amount
+			// Gaji dikelola lewat master saldo bulanan agar tidak dobel hitung.
+			if !strings.EqualFold(trx.Category, "Gaji") {
+				additionalIncome += trx.Amount
+			}
 			continue
 		}
 		totalExpense += trx.Amount
@@ -342,14 +371,16 @@ func (a *appServer) handleDashboardSummary(w http.ResponseWriter, r *http.Reques
 	}
 
 	writeJSON(w, http.StatusOK, dashboardSummaryResponse{
-		CurrentBalance:  totalIncome - totalExpense,
-		TodayExpense:    todayExpense,
-		MonthExpense:    monthExpense,
-		RemainingBudget: remainingBudget,
-		MakanToday:      makanToday,
-		MakanMonth:      makanMonth,
-		BensinMonth:     bensinMonth,
-		BudgetUsage:     budgetUsage,
+		CurrentBalance:     salaryTotalToDate + additionalIncome - totalExpense,
+		SalaryCurrentMonth: salaryCurrentMonth,
+		SalaryTotalToDate:  salaryTotalToDate,
+		TodayExpense:       todayExpense,
+		MonthExpense:       monthExpense,
+		RemainingBudget:    remainingBudget,
+		MakanToday:         makanToday,
+		MakanMonth:         makanMonth,
+		BensinMonth:        bensinMonth,
+		BudgetUsage:        budgetUsage,
 	})
 }
 
@@ -738,6 +769,120 @@ func (a *appServer) handleDeleteBudgetRule(w http.ResponseWriter, r *http.Reques
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (a *appServer) handleGetSalaryMasters(w http.ResponseWriter, r *http.Request) {
+	a.store.mu.RLock()
+	items := append([]SalaryMaster(nil), a.store.salaryMasters...)
+	a.store.mu.RUnlock()
+
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].Month == items[j].Month {
+			return items[i].ID > items[j].ID
+		}
+		return items[i].Month > items[j].Month
+	})
+
+	writeJSON(w, http.StatusOK, items)
+}
+
+func (a *appServer) handleCreateSalaryMaster(w http.ResponseWriter, r *http.Request) {
+	var input salaryMasterInput
+	if err := decodeJSON(r, &input); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	item, err := normalizeSalaryMasterInput(input)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	a.store.mu.Lock()
+	defer a.store.mu.Unlock()
+
+	if a.store.salaryMonthExistsLocked(item.Month, 0) {
+		writeError(w, http.StatusBadRequest, "master gaji bulan tersebut sudah ada")
+		return
+	}
+
+	item.ID = a.store.nextSalaryMaster
+	a.store.nextSalaryMaster++
+	a.store.salaryMasters = append(a.store.salaryMasters, item)
+
+	writeJSON(w, http.StatusCreated, item)
+}
+
+func (a *appServer) handleUpdateSalaryMaster(w http.ResponseWriter, r *http.Request) {
+	id, err := parseIDParam(r, "id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "id master gaji tidak valid")
+		return
+	}
+
+	var input salaryMasterInput
+	if err := decodeJSON(r, &input); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	normalized, err := normalizeSalaryMasterInput(input)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	a.store.mu.Lock()
+	defer a.store.mu.Unlock()
+
+	if a.store.salaryMonthExistsLocked(normalized.Month, id) {
+		writeError(w, http.StatusBadRequest, "master gaji bulan tersebut sudah ada")
+		return
+	}
+
+	index := -1
+	for i := range a.store.salaryMasters {
+		if a.store.salaryMasters[i].ID == id {
+			index = i
+			break
+		}
+	}
+	if index == -1 {
+		writeError(w, http.StatusNotFound, "master gaji tidak ditemukan")
+		return
+	}
+
+	normalized.ID = id
+	a.store.salaryMasters[index] = normalized
+
+	writeJSON(w, http.StatusOK, normalized)
+}
+
+func (a *appServer) handleDeleteSalaryMaster(w http.ResponseWriter, r *http.Request) {
+	id, err := parseIDParam(r, "id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "id master gaji tidak valid")
+		return
+	}
+
+	a.store.mu.Lock()
+	defer a.store.mu.Unlock()
+
+	index := -1
+	for i := range a.store.salaryMasters {
+		if a.store.salaryMasters[i].ID == id {
+			index = i
+			break
+		}
+	}
+	if index == -1 {
+		writeError(w, http.StatusNotFound, "master gaji tidak ditemukan")
+		return
+	}
+
+	a.store.salaryMasters = append(a.store.salaryMasters[:index], a.store.salaryMasters[index+1:]...)
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (a *appServer) handleMonthlyReport(w http.ResponseWriter, r *http.Request) {
 	month := strings.TrimSpace(r.URL.Query().Get("month"))
 	if month == "" {
@@ -818,6 +963,38 @@ func (s *store) categoryNameExistsLocked(name string, exceptID int64) bool {
 		}
 	}
 	return false
+}
+
+func (s *store) salaryMonthExistsLocked(month string, exceptID int64) bool {
+	for _, item := range s.salaryMasters {
+		if item.ID == exceptID {
+			continue
+		}
+		if item.Month == month {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *store) salaryForMonthLocked(month string) int64 {
+	var total int64
+	for _, item := range s.salaryMasters {
+		if item.Month == month {
+			total += item.Amount
+		}
+	}
+	return total
+}
+
+func (s *store) sumSalaryToMonthLocked(month string) int64 {
+	var total int64
+	for _, item := range s.salaryMasters {
+		if monthLessOrEqual(item.Month, month) {
+			total += item.Amount
+		}
+	}
+	return total
 }
 
 func (s *store) checkBudgetForTransactionLocked(trx Transaction, excludeTransactionID int64) []BudgetCheck {
@@ -922,6 +1099,15 @@ func referenceDateForRule(period string, source time.Time) (time.Time, error) {
 	}
 }
 
+func monthLessOrEqual(leftMonth, rightMonth string) bool {
+	leftDate, leftErr := time.Parse(monthLayout, leftMonth)
+	rightDate, rightErr := time.Parse(monthLayout, rightMonth)
+	if leftErr != nil || rightErr != nil {
+		return false
+	}
+	return !leftDate.After(rightDate)
+}
+
 func daysInMonth(source time.Time) int {
 	return time.Date(source.Year(), source.Month()+1, 0, 0, 0, 0, 0, source.Location()).Day()
 }
@@ -974,6 +1160,23 @@ func normalizeBudgetRuleInput(input budgetRuleInput) (BudgetRule, error) {
 		Category: category,
 		Period:   period,
 		Limit:    input.Limit,
+	}, nil
+}
+
+func normalizeSalaryMasterInput(input salaryMasterInput) (SalaryMaster, error) {
+	month := strings.TrimSpace(input.Month)
+	if _, err := time.Parse(monthLayout, month); err != nil {
+		return SalaryMaster{}, errors.New("bulan harus berformat YYYY-MM")
+	}
+
+	if input.Amount <= 0 {
+		return SalaryMaster{}, errors.New("nominal gaji harus lebih dari 0")
+	}
+
+	return SalaryMaster{
+		Month:  month,
+		Amount: input.Amount,
+		Note:   strings.TrimSpace(input.Note),
 	}, nil
 }
 

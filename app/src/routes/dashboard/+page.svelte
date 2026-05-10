@@ -86,6 +86,14 @@
 				<p class="card-title">Pengeluaran Bulan Ini</p>
 				<p class="card-value">{formatRupiah(summary.month_expense)}</p>
 			</article>
+			<article class="card">
+				<p class="card-title">Master Gaji Bulan Ini</p>
+				<p class="card-value">{formatRupiah(summary.salary_current_month)}</p>
+			</article>
+			<article class="card">
+				<p class="card-title">Akumulasi Master Gaji</p>
+				<p class="card-value">{formatRupiah(summary.salary_total_to_date)}</p>
+			</article>
 			{#if makanMonthlyBudget}
 				<article class="card">
 					<p class="card-title">Sisa Budget Makan (Bulanan)</p>
@@ -112,9 +120,7 @@
 				{#if makanBudget}
 					<div class="list-item">
 						<p class="card-title">Makan Hari Ini (Limit Rp 60.000)</p>
-						<p class="card-value">
-							{formatRupiah(makanBudget.used)} / {formatRupiah(makanBudget.limit)}
-						</p>
+						<p class="card-value">{formatRupiah(makanBudget.used)} / {formatRupiah(makanBudget.limit)}</p>
 						<div class="progress {makanBudget.over_budget ? 'over' : ''}">
 							<span style={`width: ${budgetPercent(makanBudget.percentage)}%`}></span>
 						</div>
@@ -125,9 +131,7 @@
 				{#if bensinBudget}
 					<div class="list-item">
 						<p class="card-title">Bensin Bulan Ini (Limit Rp 240.000)</p>
-						<p class="card-value">
-							{formatRupiah(bensinBudget.used)} / {formatRupiah(bensinBudget.limit)}
-						</p>
+						<p class="card-value">{formatRupiah(bensinBudget.used)} / {formatRupiah(bensinBudget.limit)}</p>
 						<div class="progress {bensinBudget.over_budget ? 'over' : ''}">
 							<span style={`width: ${budgetPercent(bensinBudget.percentage)}%`}></span>
 						</div>

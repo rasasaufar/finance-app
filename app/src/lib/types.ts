@@ -42,6 +42,13 @@ export interface BudgetCheck {
 	over_budget: boolean;
 }
 
+export interface SalaryMaster {
+	id: number;
+	month: string;
+	amount: number;
+	note: string;
+}
+
 export interface TransactionMutationResponse {
 	transaction: Transaction;
 	budget_checks: BudgetCheck[];
@@ -50,6 +57,8 @@ export interface TransactionMutationResponse {
 
 export interface DashboardSummary {
 	current_balance: number;
+	salary_current_month: number;
+	salary_total_to_date: number;
 	today_expense: number;
 	month_expense: number;
 	remaining_budget: number;
