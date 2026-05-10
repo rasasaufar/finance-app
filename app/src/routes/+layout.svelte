@@ -1,8 +1,8 @@
 <script lang="ts">
 	import './layout.css';
 	import favicon from '$lib/assets/favicon.svg';
-	import { clearAuthToken } from '$lib/auth';
-	import { api } from '$lib/api';
+	import { clearAuthToken, getAuthToken } from '$lib/auth';
+	import { api, apiBaseUrl } from '$lib/api';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
@@ -117,7 +117,7 @@
 		]
 	};
 
-	const AVATAR_KEY = 'finance_avatar';
+	const AVATAR_KEY = 'finance_avatar_path';
 
 	const currentPath = $derived(page.url.pathname);
 	const currentActions = $derived(sidebarActions[currentPath] ?? []);
@@ -179,15 +179,17 @@
 	let username = $state('Rasa Saufar');
 	let userEmail = $state('rasas@example.com');
 
-	// Saved avatar (base64 data URL) — persisted in localStorage
+	// Saved avatar path — persisted in localStorage
 	let avatarDataUrl = $state<string | null>(null);
 
 	// Edit form state
 	let editUsername = $state('');
 	let editEmail = $state('');
 	let editPassword = $state('');
-	// Preview of newly selected image before saving
+	// Preview blob URL of newly selected image (before saving)
 	let editAvatarPreview = $state<string | null>(null);
+	// The selected File object waiting to be uploaded
+	let editAvatarFile = $state<File | null>(null);
 	// Whether user explicitly wants to remove the avatar
 	let editAvatarRemoved = $state(false);
 
@@ -229,15 +231,22 @@
 		}
 	}
 
-	function saveAvatarToStorage(dataUrl: string | null): void {
+	// Convert stored path (/images/xxx.jpg) to full URL served by the API
+	function avatarSrc(path: string | null): string | null {
+		if (!path) return null;
+		if (path.startsWith('http')) return path;
+		return `${apiBaseUrl}${path}`;
+	}
+
+	function saveAvatarToStorage(path: string | null): void {
 		try {
-			if (dataUrl) {
-				localStorage.setItem(AVATAR_KEY, dataUrl);
+			if (path) {
+				localStorage.setItem(AVATAR_KEY, path);
 			} else {
 				localStorage.removeItem(AVATAR_KEY);
 			}
 		} catch {
-			// ignore — storage might be full
+			// ignore
 		}
 	}
 
@@ -246,13 +255,10 @@
 		const file = input.files?.[0];
 		if (!file) return;
 
-		// Validate type
 		if (!file.type.startsWith('image/')) {
 			saveError = 'File harus berupa gambar (JPG, PNG, WebP, dll).';
 			return;
 		}
-
-		// Validate size — max 2 MB
 		if (file.size > 2 * 1024 * 1024) {
 			saveError = 'Ukuran gambar maksimal 2 MB.';
 			return;
@@ -260,38 +266,17 @@
 
 		saveError = '';
 		editAvatarRemoved = false;
+		editAvatarFile = file;
 
-		const reader = new FileReader();
-		reader.onload = (ev) => {
-			const result = ev.target?.result;
-			if (typeof result === 'string') {
-				// Crop & resize to 256×256 via canvas to keep localStorage lean
-				const img = new Image();
-				img.onload = () => {
-					const canvas = document.createElement('canvas');
-					const SIZE = 256;
-					canvas.width = SIZE;
-					canvas.height = SIZE;
-					const ctx = canvas.getContext('2d');
-					if (!ctx) {
-						editAvatarPreview = result;
-						return;
-					}
-					// Center-crop
-					const side = Math.min(img.width, img.height);
-					const sx = (img.width - side) / 2;
-					const sy = (img.height - side) / 2;
-					ctx.drawImage(img, sx, sy, side, side, 0, 0, SIZE, SIZE);
-					editAvatarPreview = canvas.toDataURL('image/jpeg', 0.85);
-				};
-				img.src = result;
-			}
-		};
-		reader.readAsDataURL(file);
+		// Revoke previous preview blob to avoid memory leak
+		if (editAvatarPreview) URL.revokeObjectURL(editAvatarPreview);
+		editAvatarPreview = URL.createObjectURL(file);
 	}
 
 	function handleRemoveAvatar(): void {
+		if (editAvatarPreview) URL.revokeObjectURL(editAvatarPreview);
 		editAvatarPreview = null;
+		editAvatarFile = null;
 		editAvatarRemoved = true;
 		if (fileInput) fileInput.value = '';
 	}
@@ -300,7 +285,9 @@
 		editUsername = username;
 		editEmail = userEmail;
 		editPassword = '';
+		if (editAvatarPreview) URL.revokeObjectURL(editAvatarPreview);
 		editAvatarPreview = null;
+		editAvatarFile = null;
 		editAvatarRemoved = false;
 		saveError = '';
 		settingsOpen = true;
@@ -313,6 +300,34 @@
 		saving = true;
 
 		try {
+			// 1. Upload avatar dulu jika ada file baru (independen dari profile update)
+			let newAvatarPath: string | null = null;
+			if (editAvatarFile) {
+				const formData = new FormData();
+				formData.append('avatar', editAvatarFile);
+
+				const token = getAuthToken();
+				const uploadUrl = `${apiBaseUrl}/me/avatar`;
+				const res = await fetch(uploadUrl, {
+					method: 'POST',
+					headers: token ? { Authorization: `Bearer ${token}` } : {},
+					body: formData
+				});
+
+				if (!res.ok) {
+					let errMsg = `Gagal upload foto (HTTP ${res.status}).`;
+					try {
+						const body = await res.json();
+						if (body?.error) errMsg = body.error;
+					} catch { /* ignore */ }
+					throw new Error(errMsg);
+				}
+
+				const result = (await res.json()) as { path: string };
+				newAvatarPath = result.path;
+			}
+
+			// 2. Update profile
 			const updated = await api.put<User>('/me', {
 				name: editUsername,
 				email: editEmail,
@@ -322,22 +337,32 @@
 			userEmail = updated.email;
 			editPassword = '';
 
-			// Persist avatar change
+			// 3. Commit avatar changes setelah profile berhasil disimpan
 			if (editAvatarRemoved) {
+				if (avatarDataUrl && avatarDataUrl.startsWith('/images/')) {
+					try { await api.delete(`/me/avatar?path=${encodeURIComponent(avatarDataUrl)}`); } catch { /* best-effort */ }
+				}
 				avatarDataUrl = null;
 				saveAvatarToStorage(null);
-			} else if (editAvatarPreview) {
-				avatarDataUrl = editAvatarPreview;
-				saveAvatarToStorage(editAvatarPreview);
+			} else if (newAvatarPath) {
+				// Hapus foto lama
+				if (avatarDataUrl && avatarDataUrl.startsWith('/images/')) {
+					try { await api.delete(`/me/avatar?path=${encodeURIComponent(avatarDataUrl)}`); } catch { /* best-effort */ }
+				}
+				avatarDataUrl = newAvatarPath;
+				saveAvatarToStorage(newAvatarPath);
 			}
+
+			// 4. Cleanup preview blob
+			if (editAvatarPreview) {
+				URL.revokeObjectURL(editAvatarPreview);
+				editAvatarPreview = null;
+			}
+			editAvatarFile = null;
 
 			settingsOpen = false;
 		} catch (err: unknown) {
-			if (err instanceof Error) {
-				saveError = err.message;
-			} else {
-				saveError = 'Gagal menyimpan perubahan.';
-			}
+			saveError = err instanceof Error ? err.message : 'Gagal menyimpan perubahan.';
 		} finally {
 			saving = false;
 		}
@@ -442,7 +467,7 @@
 					>
 						<div class="profile-avatar">
 							{#if avatarDataUrl}
-								<img src={avatarDataUrl} alt={username} class="avatar-img" />
+								<img src={avatarSrc(avatarDataUrl)} alt={username} class="avatar-img" />
 							{:else}
 								{userInitials}
 							{/if}
@@ -501,7 +526,7 @@
 						<div class="avatar-preview-wrap">
 							<div class="avatar-preview-circle">
 								{#if editAvatarDisplay}
-									<img src={editAvatarDisplay} alt="Preview avatar" class="avatar-img" />
+									<img src={editAvatarDisplay.startsWith('blob:') ? editAvatarDisplay : avatarSrc(editAvatarDisplay)} alt="Preview avatar" class="avatar-img" />
 								{:else}
 									<span class="avatar-initials">{editInitials}</span>
 								{/if}
