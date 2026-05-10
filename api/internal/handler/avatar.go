@@ -13,17 +13,17 @@ import (
 )
 
 // AvatarUploadDir returns the absolute path to the avatar upload directory.
-// Priority: AVATAR_UPLOAD_DIR env var → <executable_dir>/uploads
+// Priority: AVATAR_UPLOAD_DIR env var → <working_dir>/uploads
 func AvatarUploadDir() string {
 	if dir := strings.TrimSpace(os.Getenv("AVATAR_UPLOAD_DIR")); dir != "" {
 		return dir
 	}
-	// Use directory of the running executable so path is always correct
-	exe, err := os.Executable()
+	// Use current working directory so "go run" and compiled binary both work
+	cwd, err := os.Getwd()
 	if err != nil {
 		return "uploads"
 	}
-	return filepath.Join(filepath.Dir(exe), "uploads")
+	return filepath.Join(cwd, "uploads")
 }
 
 // avatarUploadDir is the unexported alias used within this package.
