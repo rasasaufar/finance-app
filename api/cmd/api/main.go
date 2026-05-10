@@ -164,6 +164,12 @@ type dbBudgetRule struct {
 	Limit      int64
 }
 
+type dbUserProfile struct {
+	ID       int64
+	FullName string
+	Email    string
+}
+
 func main() {
 	databaseURL := strings.TrimSpace(os.Getenv("DATABASE_URL"))
 	if databaseURL == "" {
@@ -211,6 +217,7 @@ func main() {
 	r.Group(func(pr chi.Router) {
 		pr.Use(authMiddleware)
 		pr.Get("/me", app.handleMe)
+		pr.Put("/me", app.handleUpdateMe)
 		pr.Get("/dashboard/summary", app.handleDashboardSummary)
 
 		pr.Get("/transactions", app.handleGetTransactions)
@@ -273,17 +280,71 @@ func (a *appServer) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	profileName := "Rasas"
+	if profile, err := a.store.findUserProfileByEmail(r.Context(), hardcodedEmail); err == nil {
+		profileName = profile.FullName
+	}
+
 	writeJSON(w, http.StatusOK, loginResponse{
 		Token: dummyToken,
 		User: User{
-			Name:  "Rasas",
+			Name:  profileName,
 			Email: hardcodedEmail,
 		},
 	})
 }
 
 func (a *appServer) handleMe(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, User{Name: "Rasas", Email: hardcodedEmail})
+	profile, err := a.store.findUserProfileByEmail(r.Context(), hardcodedEmail)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeJSON(w, http.StatusOK, User{Name: "Rasas", Email: hardcodedEmail})
+			return
+		}
+		writeInternalServerError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, User{Name: profile.FullName, Email: profile.Email})
+}
+
+type updateProfileInput struct {
+	Name     string `json:"name"`
+	Email    string `json:"email"`
+	Password string `json:"password,omitempty"`
+}
+
+func (a *appServer) handleUpdateMe(w http.ResponseWriter, r *http.Request) {
+	var input updateProfileInput
+	if err := decodeJSON(r, &input); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	name := strings.TrimSpace(input.Name)
+	if name == "" {
+		writeError(w, http.StatusBadRequest, "nama tidak boleh kosong")
+		return
+	}
+
+	email := strings.TrimSpace(input.Email)
+	if email == "" {
+		writeError(w, http.StatusBadRequest, "email tidak boleh kosong")
+		return
+	}
+
+	ctx := r.Context()
+	updated, err := a.store.updateUserProfile(ctx, hardcodedEmail, name, email, strings.TrimSpace(input.Password))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "profil tidak ditemukan")
+			return
+		}
+		writeInternalServerError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, User{Name: updated.FullName, Email: updated.Email})
 }
 
 func (a *appServer) handleDashboardSummary(w http.ResponseWriter, r *http.Request) {
@@ -1173,6 +1234,17 @@ func (s *store) ensureSchema(ctx context.Context) error {
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		)`,
+		`CREATE TABLE IF NOT EXISTS user_profiles (
+			id BIGSERIAL PRIMARY KEY,
+			full_name TEXT NOT NULL,
+			email TEXT NOT NULL UNIQUE,
+			password_hash TEXT NOT NULL DEFAULT '',
+			avatar_url TEXT NOT NULL DEFAULT '',
+			avatar_initials TEXT NOT NULL DEFAULT '',
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS uq_user_profiles_lower_email ON user_profiles ((LOWER(email)))`,
 	}
 
 	for _, statement := range statements {
@@ -1213,6 +1285,16 @@ func (s *store) seedDefaults(ctx context.Context) error {
 		FROM categories
 		WHERE name = 'Bensin'
 		ON CONFLICT (category_id, period) DO NOTHING`); err != nil {
+		return err
+	}
+
+	if _, err := s.db.Exec(ctx, `
+		INSERT INTO user_profiles (full_name, email, password_hash, avatar_initials)
+		VALUES ('Rasa Saufar', $1, $2, 'RS')
+		ON CONFLICT (email) DO NOTHING`,
+		hardcodedEmail,
+		hardcodedPassword,
+	); err != nil {
 		return err
 	}
 
@@ -1386,6 +1468,60 @@ func (s *store) categoryNameExists(ctx context.Context, name string, exceptID in
 		return false, err
 	}
 	return exists, nil
+}
+
+func (s *store) findUserProfileByEmail(ctx context.Context, email string) (dbUserProfile, error) {
+	item := dbUserProfile{}
+	err := s.db.QueryRow(
+		ctx,
+		`SELECT id, full_name, email
+		 FROM user_profiles
+		 WHERE LOWER(email) = LOWER($1)
+		 ORDER BY id
+		 LIMIT 1`,
+		strings.TrimSpace(email),
+	).Scan(&item.ID, &item.FullName, &item.Email)
+	if err != nil {
+		return dbUserProfile{}, err
+	}
+	return item, nil
+}
+
+func (s *store) updateUserProfile(ctx context.Context, currentEmail, newName, newEmail, newPassword string) (dbUserProfile, error) {
+	var item dbUserProfile
+
+	if newPassword != "" {
+		err := s.db.QueryRow(
+			ctx,
+			`UPDATE user_profiles
+			 SET full_name = $1,
+			     email = $2,
+			     password_hash = $3,
+			     updated_at = NOW()
+			 WHERE LOWER(email) = LOWER($4)
+			 RETURNING id, full_name, email`,
+			newName, newEmail, newPassword, currentEmail,
+		).Scan(&item.ID, &item.FullName, &item.Email)
+		if err != nil {
+			return dbUserProfile{}, err
+		}
+	} else {
+		err := s.db.QueryRow(
+			ctx,
+			`UPDATE user_profiles
+			 SET full_name = $1,
+			     email = $2,
+			     updated_at = NOW()
+			 WHERE LOWER(email) = LOWER($3)
+			 RETURNING id, full_name, email`,
+			newName, newEmail, currentEmail,
+		).Scan(&item.ID, &item.FullName, &item.Email)
+		if err != nil {
+			return dbUserProfile{}, err
+		}
+	}
+
+	return item, nil
 }
 
 func (s *store) salaryForMonth(ctx context.Context, month string) (int64, error) {

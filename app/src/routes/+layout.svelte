@@ -2,8 +2,11 @@
 	import './layout.css';
 	import favicon from '$lib/assets/favicon.svg';
 	import { clearAuthToken } from '$lib/auth';
+	import { api } from '$lib/api';
+	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
+	import type { User } from '$lib/types';
 
 	let { children, data } = $props<{
 		children: import('svelte').Snippet;
@@ -61,23 +64,65 @@
 	let username = $state('Rasa Saufar');
 	let userEmail = $state('rasas@example.com');
 
-	let editUsername = $state(username);
-	let editEmail = $state(userEmail);
+	let editUsername = $state('');
+	let editEmail = $state('');
 	let editPassword = $state('');
 
 	let userInitials = $derived(username.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || 'U');
 
-	function handleSaveSettings(e: Event) {
+	let saveError = $state('');
+	let saving = $state(false);
+
+	async function handleSaveSettings(e: Event): Promise<void> {
 		e.preventDefault();
-		username = editUsername;
-		userEmail = editEmail;
-		settingsOpen = false;
+		saveError = '';
+		saving = true;
+
+		try {
+			const updated = await api.put<User>('/me', {
+				name: editUsername,
+				email: editEmail,
+				password: editPassword || undefined
+			});
+			username = updated.name;
+			userEmail = updated.email;
+			editPassword = '';
+			settingsOpen = false;
+		} catch (err: unknown) {
+			if (err instanceof Error) {
+				saveError = err.message;
+			} else {
+				saveError = 'Gagal menyimpan perubahan.';
+			}
+		} finally {
+			saving = false;
+		}
+	}
+
+	async function loadProfile(): Promise<void> {
+		if (!data.isLoggedIn) {
+			return;
+		}
+
+		try {
+			const me = await api.get<User>('/me');
+			username = me.name;
+			userEmail = me.email;
+			editUsername = me.name;
+			editEmail = me.email;
+		} catch {
+			// Jangan ganggu UX layout jika profile sementara gagal dimuat.
+		}
 	}
 
 	async function handleLogout(): Promise<void> {
 		clearAuthToken();
 		await goto('/login');
 	}
+
+	onMount(() => {
+		loadProfile();
+	});
 </script>
 
 <svelte:head>
@@ -151,7 +196,7 @@
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
 		<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 		<div class="modal-backdrop" onclick={() => settingsOpen = false} role="presentation">
-			<div class="modal-card" onclick={(e) => e.stopPropagation()} role="dialog">
+			<div class="modal-card" onclick={(e) => e.stopPropagation()} role="dialog" tabindex="-1">
 				<h2 class="section-title">Pengaturan Akun</h2>
 				<p class="muted" style="margin-bottom: 1.5rem;">Update informasi profil Anda di sini.</p>
 
@@ -173,10 +218,14 @@
 						<span>Password Baru</span>
 						<input type="password" bind:value={editPassword} placeholder="Kosongkan jika tidak ingin diubah" />
 					</label>
-					
+
+					{#if saveError}
+						<p style="color: #ef4444; font-size: 0.85rem; margin-top: 0.5rem;">{saveError}</p>
+					{/if}
+				
 					<div style="display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1rem;">
-						<button class="button-secondary" type="button" onclick={() => settingsOpen = false}>Batal</button>
-						<button class="button-primary" type="submit">Simpan</button>
+						<button class="button-secondary" type="button" onclick={() => settingsOpen = false} disabled={saving}>Batal</button>
+						<button class="button-primary" type="submit" disabled={saving}>{saving ? 'Menyimpan...' : 'Simpan'}</button>
 					</div>
 				</form>
 			</div>
