@@ -1,6 +1,8 @@
 import { PUBLIC_API_BASE_URL } from '$env/static/public';
 import { clearAuthToken, getAuthToken } from '$lib/auth';
 
+export { PUBLIC_API_BASE_URL as apiBaseUrl };
+
 export class ApiError extends Error {
 	status: number;
 

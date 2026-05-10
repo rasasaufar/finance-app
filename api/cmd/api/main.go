@@ -50,9 +50,16 @@ func main() {
 			"http://localhost:5174",
 		},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Requested-With"},
 		AllowCredentials: true,
 	}))
+
+	// Serve uploaded avatar images from <exe_dir>/uploads at /images/
+	uploadsDir := handler.AvatarUploadDir()
+	if err := os.MkdirAll(uploadsDir, 0755); err != nil {
+		log.Printf("warning: gagal buat folder uploads: %v", err)
+	}
+	r.Handle("/images/*", http.StripPrefix("/images/", http.FileServer(http.Dir(uploadsDir))))
 
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -67,6 +74,8 @@ func main() {
 
 		pr.Get("/me", h.HandleMe)
 		pr.Put("/me", h.HandleUpdateMe)
+		pr.Post("/me/avatar", h.HandleUploadAvatar)
+		pr.Delete("/me/avatar", h.HandleDeleteAvatar)
 
 		pr.Get("/dashboard/summary", h.HandleDashboardSummary)
 
