@@ -55,6 +55,12 @@
 		return currentPath === path;
 	}
 
+	let profileOpen = $state(false);
+	let settingsOpen = $state(false);
+	let editUsername = $state('Rasa Saufar');
+	let editEmail = $state('rasas@example.com');
+	let editPassword = $state('');
+
 	async function handleLogout(): Promise<void> {
 		clearAuthToken();
 		await goto('/login');
@@ -87,7 +93,29 @@
 				{/each}
 			</nav>
 
-			<button class="logout-button" type="button" onclick={handleLogout}>Keluar</button>
+			<div class="sidebar-bottom">
+				<div class="profile-widget">
+					<button class="profile-button" type="button" onclick={() => profileOpen = !profileOpen}>
+						<div class="profile-avatar">RS</div>
+						<div class="profile-info">
+							<p class="profile-name">Rasa Saufar</p>
+							<p class="profile-role">Admin</p>
+						</div>
+					</button>
+
+					{#if profileOpen}
+						<div class="profile-popup">
+							<div class="popup-header">
+								<p class="popup-email">rasas@example.com</p>
+							</div>
+							<button class="popup-item" type="button" onclick={() => { settingsOpen = true; profileOpen = false; }}>Pengaturan Akun</button>
+							<button class="popup-item" type="button">Bantuan</button>
+						</div>
+					{/if}
+				</div>
+
+				<button class="logout-button" type="button" onclick={handleLogout}>Keluar</button>
+			</div>
 		</aside>
 	{/if}
 
@@ -104,5 +132,41 @@
 				</a>
 			{/each}
 		</nav>
+	{/if}
+
+	{#if settingsOpen}
+		<!-- svelte-ignore a11y_click_events_have_key_events -->
+		<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+		<div class="modal-backdrop" onclick={() => settingsOpen = false} role="presentation">
+			<div class="modal-card" onclick={(e) => e.stopPropagation()} role="dialog">
+				<h2 class="section-title">Pengaturan Akun</h2>
+				<p class="muted" style="margin-bottom: 1.5rem;">Update informasi profil Anda di sini.</p>
+
+				<form class="form-grid" onsubmit={(e) => { e.preventDefault(); settingsOpen = false; }}>
+					<div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 0.5rem;">
+						<div class="profile-avatar" style="width: 4rem; height: 4rem; font-size: 1.5rem;">RS</div>
+						<button class="button-secondary" type="button" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; border-radius: 0.5rem; min-height: unset;">Ubah Avatar</button>
+					</div>
+
+					<label class="field">
+						<span>Nama Lengkap</span>
+						<input type="text" bind:value={editUsername} />
+					</label>
+					<label class="field">
+						<span>Email</span>
+						<input type="email" bind:value={editEmail} />
+					</label>
+					<label class="field">
+						<span>Password Baru</span>
+						<input type="password" bind:value={editPassword} placeholder="Kosongkan jika tidak ingin diubah" />
+					</label>
+					
+					<div style="display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1rem;">
+						<button class="button-secondary" type="button" onclick={() => settingsOpen = false}>Batal</button>
+						<button class="button-primary" type="submit">Simpan</button>
+					</div>
+				</form>
+			</div>
+		</div>
 	{/if}
 </div>
