@@ -58,6 +58,8 @@
 		}
 	];
 
+	const AVATAR_KEY = 'finance_avatar';
+
 	const currentPath = $derived(page.url.pathname);
 	const todayLabel = new Intl.DateTimeFormat('id-ID', {
 		weekday: 'long',
@@ -82,9 +84,19 @@
 	let username = $state('Rasa Saufar');
 	let userEmail = $state('rasas@example.com');
 
+	// Saved avatar (base64 data URL) — persisted in localStorage
+	let avatarDataUrl = $state<string | null>(null);
+
+	// Edit form state
 	let editUsername = $state('');
 	let editEmail = $state('');
 	let editPassword = $state('');
+	// Preview of newly selected image before saving
+	let editAvatarPreview = $state<string | null>(null);
+	// Whether user explicitly wants to remove the avatar
+	let editAvatarRemoved = $state(false);
+
+	let fileInput: HTMLInputElement | null = $state(null);
 
 	let userInitials = $derived(
 		username
@@ -95,8 +107,110 @@
 			.toUpperCase() || 'U'
 	);
 
+	// The avatar shown in the edit modal preview area
+	const editAvatarDisplay = $derived<string | null>(
+		editAvatarRemoved ? null : (editAvatarPreview ?? avatarDataUrl)
+	);
+
+	// Initials computed from the edit form name (live preview)
+	const editInitials = $derived(
+		editUsername
+			.split(' ')
+			.map((n) => n[0])
+			.join('')
+			.substring(0, 2)
+			.toUpperCase() || 'U'
+	);
+
 	let saveError = $state('');
 	let saving = $state(false);
+
+	function loadAvatarFromStorage(): void {
+		try {
+			const stored = localStorage.getItem(AVATAR_KEY);
+			avatarDataUrl = stored ?? null;
+		} catch {
+			// ignore
+		}
+	}
+
+	function saveAvatarToStorage(dataUrl: string | null): void {
+		try {
+			if (dataUrl) {
+				localStorage.setItem(AVATAR_KEY, dataUrl);
+			} else {
+				localStorage.removeItem(AVATAR_KEY);
+			}
+		} catch {
+			// ignore — storage might be full
+		}
+	}
+
+	function handleFileChange(e: Event): void {
+		const input = e.target as HTMLInputElement;
+		const file = input.files?.[0];
+		if (!file) return;
+
+		// Validate type
+		if (!file.type.startsWith('image/')) {
+			saveError = 'File harus berupa gambar (JPG, PNG, WebP, dll).';
+			return;
+		}
+
+		// Validate size — max 2 MB
+		if (file.size > 2 * 1024 * 1024) {
+			saveError = 'Ukuran gambar maksimal 2 MB.';
+			return;
+		}
+
+		saveError = '';
+		editAvatarRemoved = false;
+
+		const reader = new FileReader();
+		reader.onload = (ev) => {
+			const result = ev.target?.result;
+			if (typeof result === 'string') {
+				// Crop & resize to 256×256 via canvas to keep localStorage lean
+				const img = new Image();
+				img.onload = () => {
+					const canvas = document.createElement('canvas');
+					const SIZE = 256;
+					canvas.width = SIZE;
+					canvas.height = SIZE;
+					const ctx = canvas.getContext('2d');
+					if (!ctx) {
+						editAvatarPreview = result;
+						return;
+					}
+					// Center-crop
+					const side = Math.min(img.width, img.height);
+					const sx = (img.width - side) / 2;
+					const sy = (img.height - side) / 2;
+					ctx.drawImage(img, sx, sy, side, side, 0, 0, SIZE, SIZE);
+					editAvatarPreview = canvas.toDataURL('image/jpeg', 0.85);
+				};
+				img.src = result;
+			}
+		};
+		reader.readAsDataURL(file);
+	}
+
+	function handleRemoveAvatar(): void {
+		editAvatarPreview = null;
+		editAvatarRemoved = true;
+		if (fileInput) fileInput.value = '';
+	}
+
+	function openSettings(): void {
+		editUsername = username;
+		editEmail = userEmail;
+		editPassword = '';
+		editAvatarPreview = null;
+		editAvatarRemoved = false;
+		saveError = '';
+		settingsOpen = true;
+		profileOpen = false;
+	}
 
 	async function handleSaveSettings(e: Event): Promise<void> {
 		e.preventDefault();
@@ -112,6 +226,16 @@
 			username = updated.name;
 			userEmail = updated.email;
 			editPassword = '';
+
+			// Persist avatar change
+			if (editAvatarRemoved) {
+				avatarDataUrl = null;
+				saveAvatarToStorage(null);
+			} else if (editAvatarPreview) {
+				avatarDataUrl = editAvatarPreview;
+				saveAvatarToStorage(editAvatarPreview);
+			}
+
 			settingsOpen = false;
 		} catch (err: unknown) {
 			if (err instanceof Error) {
@@ -147,6 +271,7 @@
 
 	onMount(() => {
 		loadProfile();
+		loadAvatarFromStorage();
 	});
 </script>
 
@@ -186,7 +311,13 @@
 						type="button"
 						onclick={() => (profileOpen = !profileOpen)}
 					>
-						<div class="profile-avatar">{userInitials}</div>
+						<div class="profile-avatar">
+							{#if avatarDataUrl}
+								<img src={avatarDataUrl} alt={username} class="avatar-img" />
+							{:else}
+								{userInitials}
+							{/if}
+						</div>
 						<div class="profile-info">
 							<p class="profile-name">{username}</p>
 							<p class="profile-role">Pemilik Buku Kas</p>
@@ -198,17 +329,9 @@
 							<div class="popup-header">
 								<p class="popup-email">{userEmail}</p>
 							</div>
-							<button
-								class="popup-item"
-								type="button"
-								onclick={() => {
-									editUsername = username;
-									editEmail = userEmail;
-									editPassword = '';
-									settingsOpen = true;
-									profileOpen = false;
-								}}>Pengaturan Akun</button
-							>
+							<button class="popup-item" type="button" onclick={openSettings}>
+								Pengaturan Akun
+							</button>
 							<button class="popup-item" type="button">Bantuan</button>
 						</div>
 					{/if}
@@ -238,33 +361,64 @@
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
 		<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 		<div class="modal-backdrop" onclick={() => (settingsOpen = false)} role="presentation">
-			<div class="modal-card" onclick={(e) => e.stopPropagation()} role="dialog" tabindex="-1">
-				<p class="muted mono" style="margin-bottom: 0.35rem;">Preferensi · Akun</p>
-				<h2 class="section-title" style="margin-bottom: 1rem;">Pengaturan Akun</h2>
-				<p class="muted" style="margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 1px dashed var(--rule);">
-					Perbarui informasi pemilik buku kas.
-				</p>
+			<div class="modal-card settings-modal" onclick={(e) => e.stopPropagation()} role="dialog" tabindex="-1">
+				<p class="muted mono" style="margin-bottom: 0.35rem; font-size: 0.6rem; letter-spacing: 0.18em; text-transform: uppercase;">Preferensi · Akun</p>
+				<h2 class="section-title" style="margin-bottom: 1.25rem;">Pengaturan Akun</h2>
 
 				<form class="form-grid" onsubmit={handleSaveSettings}>
-					<div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 0.25rem;">
-						<div
-							class="profile-avatar"
-							style="width: 3.5rem; height: 3.5rem; font-size: 1.5rem;"
-						>
-							{editUsername
-								.split(' ')
-								.map((n) => n[0])
-								.join('')
-								.substring(0, 2)
-								.toUpperCase() || 'U'}
+
+					<!-- Avatar editor -->
+					<div class="avatar-editor">
+						<div class="avatar-preview-wrap">
+							<div class="avatar-preview-circle">
+								{#if editAvatarDisplay}
+									<img src={editAvatarDisplay} alt="Preview avatar" class="avatar-img" />
+								{:else}
+									<span class="avatar-initials">{editInitials}</span>
+								{/if}
+							</div>
+							<!-- Overlay edit button -->
+							<label class="avatar-edit-overlay" title="Ganti foto">
+								<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+								<input
+									bind:this={fileInput}
+									type="file"
+									accept="image/*"
+									class="avatar-file-input"
+									onchange={handleFileChange}
+								/>
+							</label>
 						</div>
-						<div>
-							<p class="muted mono" style="margin: 0 0 0.25rem;">Avatar inisial</p>
-							<p class="muted" style="font-size: 0.8rem;">
-								Dihitung otomatis dari nama lengkap.
-							</p>
+
+						<div class="avatar-actions">
+							<p class="avatar-label mono">Foto Profil</p>
+							<p class="avatar-hint">JPG, PNG, WebP · Maks. 2 MB · Dipotong otomatis jadi persegi</p>
+							<div class="avatar-btns">
+								<label class="button-secondary avatar-upload-btn">
+									<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+									{editAvatarDisplay ? 'Ganti Foto' : 'Upload Foto'}
+									<input
+										type="file"
+										accept="image/*"
+										class="avatar-file-input"
+										onchange={handleFileChange}
+									/>
+								</label>
+								{#if editAvatarDisplay}
+									<button
+										class="button-danger avatar-remove-btn"
+										type="button"
+										onclick={handleRemoveAvatar}
+									>
+										<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+										Hapus Foto
+									</button>
+								{/if}
+							</div>
 						</div>
 					</div>
+
+					<hr class="hrule dashed" />
 
 					<label class="field">
 						<span>Nama Lengkap</span>
@@ -287,19 +441,146 @@
 						<p class="error">{saveError}</p>
 					{/if}
 
-					<div class="button-row" style="justify-content: flex-end;">
+					<div class="button-row" style="justify-content: flex-end; margin-top: 0.5rem;">
 						<button
 							class="button-secondary"
 							type="button"
 							onclick={() => (settingsOpen = false)}
 							disabled={saving}>Batal</button
 						>
-						<button class="button-primary" type="submit" disabled={saving}
-							>{saving ? 'Menyimpan…' : 'Simpan Perubahan'}</button
-						>
+						<button class="button-primary" type="submit" disabled={saving}>
+							{saving ? 'Menyimpan…' : 'Simpan Perubahan'}
+						</button>
 					</div>
 				</form>
 			</div>
 		</div>
 	{/if}
 </div>
+
+<style>
+	/* Avatar image inside the circle */
+	.avatar-img {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		border-radius: 50%;
+		display: block;
+	}
+
+	/* ── Settings modal ── */
+	.settings-modal {
+		width: min(100%, 520px);
+		max-height: 90dvh;
+		overflow-y: auto;
+	}
+
+	/* ── Avatar editor block ── */
+	.avatar-editor {
+		display: flex;
+		align-items: flex-start;
+		gap: 1.25rem;
+	}
+
+	.avatar-preview-wrap {
+		position: relative;
+		flex-shrink: 0;
+	}
+
+	.avatar-preview-circle {
+		width: 5rem;
+		height: 5rem;
+		border-radius: 50%;
+		background: var(--ink);
+		color: var(--paper);
+		display: grid;
+		place-items: center;
+		overflow: hidden;
+		border: 1.5px solid var(--ink);
+		box-shadow: 3px 3px 0 var(--ink);
+	}
+
+	.avatar-initials {
+		font-family: var(--font-display);
+		font-style: italic;
+		font-size: 1.75rem;
+		line-height: 1;
+		letter-spacing: -0.03em;
+		color: var(--paper);
+		user-select: none;
+	}
+
+	/* Pencil overlay on hover */
+	.avatar-edit-overlay {
+		position: absolute;
+		inset: 0;
+		border-radius: 50%;
+		background: rgba(28, 25, 21, 0.55);
+		display: grid;
+		place-items: center;
+		cursor: pointer;
+		opacity: 0;
+		transition: opacity 0.2s;
+		color: var(--paper);
+	}
+
+	.avatar-preview-wrap:hover .avatar-edit-overlay {
+		opacity: 1;
+	}
+
+	.avatar-file-input {
+		display: none;
+	}
+
+	.avatar-actions {
+		flex: 1;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 0.35rem;
+	}
+
+	.avatar-label {
+		margin: 0;
+		font-size: 0.65rem;
+		letter-spacing: 0.18em;
+		text-transform: uppercase;
+		color: var(--ink);
+		font-family: var(--font-mono);
+	}
+
+	.avatar-hint {
+		margin: 0;
+		font-size: 0.78rem;
+		color: var(--ink-faint);
+		font-style: italic;
+		font-family: var(--font-display);
+		line-height: 1.4;
+	}
+
+	.avatar-btns {
+		display: flex;
+		gap: 0.6rem;
+		flex-wrap: wrap;
+		margin-top: 0.25rem;
+	}
+
+	.avatar-upload-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.4rem;
+		cursor: pointer;
+		font-size: 0.82rem;
+		padding: 0.55rem 0.85rem;
+		min-height: unset;
+	}
+
+	.avatar-remove-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.4rem;
+		font-size: 0.82rem;
+		padding: 0.55rem 0.85rem;
+		min-height: unset;
+	}
+</style>
