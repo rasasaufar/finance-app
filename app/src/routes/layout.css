@@ -66,8 +66,14 @@ main {
 }
 
 @keyframes fade-in {
-	from { opacity: 0; transform: translateY(10px); }
-	to { opacity: 1; transform: translateY(0); }
+	from {
+		opacity: 0;
+		transform: translateY(10px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
 }
 
 main.withNavigation {
@@ -268,7 +274,9 @@ main.withNavigation {
 	box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.2);
 	position: relative;
 	overflow: hidden;
-	transition: transform 0.2s, box-shadow 0.2s;
+	transition:
+		transform 0.2s,
+		box-shadow 0.2s;
 }
 
 .card:hover {
@@ -279,9 +287,11 @@ main.withNavigation {
 .card::before {
 	content: '';
 	position: absolute;
-	top: 0; left: 0; right: 0;
+	top: 0;
+	left: 0;
+	right: 0;
 	height: 1px;
-	background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+	background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
 }
 
 .card-title {
@@ -491,14 +501,21 @@ textarea {
 .progress > span::after {
 	content: '';
 	position: absolute;
-	top: 0; right: 0; bottom: 0; left: 0;
-	background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+	top: 0;
+	right: 0;
+	bottom: 0;
+	left: 0;
+	background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
 	animation: shimmer 2s infinite linear;
 }
 
 @keyframes shimmer {
-	0% { transform: translateX(-100%); }
-	100% { transform: translateX(100%); }
+	0% {
+		transform: translateX(-100%);
+	}
+	100% {
+		transform: translateX(100%);
+	}
 }
 
 .progress.over > span {
@@ -535,6 +552,53 @@ textarea {
 	border: 1px solid rgba(16, 185, 129, 0.2);
 }
 
+.modal-backdrop {
+	position: fixed;
+	inset: 0;
+	background: rgba(2, 6, 23, 0.72);
+	backdrop-filter: blur(4px);
+	display: grid;
+	place-items: center;
+	padding: 1rem;
+	z-index: 70;
+}
+
+.modal-card {
+	width: min(100%, 480px);
+	background: var(--surface-solid);
+	border: 1px solid var(--line);
+	border-radius: 1rem;
+	padding: 1rem;
+	box-shadow: 0 25px 60px rgba(2, 6, 23, 0.55);
+}
+
+.confirm-detail-list {
+	display: grid;
+	gap: 0.65rem;
+	margin-bottom: 0.9rem;
+}
+
+.confirm-detail-row {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 0.8rem;
+	padding-bottom: 0.45rem;
+	border-bottom: 1px dashed rgba(255, 255, 255, 0.12);
+}
+
+.confirm-detail-row span {
+	color: var(--text-secondary);
+	font-size: 0.82rem;
+}
+
+.confirm-detail-row strong {
+	text-align: right;
+	font-size: 0.9rem;
+	font-weight: 700;
+	color: var(--text);
+}
+
 table {
 	width: 100%;
 	border-collapse: separate;
@@ -559,6 +623,10 @@ th {
 @media (min-width: 768px) {
 	main {
 		padding: 2rem;
+	}
+
+	.modal-card {
+		padding: 1.25rem;
 	}
 
 	.card-grid {

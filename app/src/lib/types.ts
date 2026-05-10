@@ -54,6 +54,7 @@ export interface DashboardSummary {
 	month_expense: number;
 	remaining_budget: number;
 	makan_today?: BudgetCheck;
+	makan_month?: BudgetCheck;
 	bensin_month?: BudgetCheck;
 	budget_usage: BudgetCheck[];
 }
