@@ -9,6 +9,7 @@ app/.env.local
 # Go
 api/tmp/
 api/bin/
+api/uploads/
 
 # Env
 .env
