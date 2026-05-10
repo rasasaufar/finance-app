@@ -32,6 +32,8 @@
 
 	const makanBudget = $derived(findBudget('Makan', 'daily'));
 	const bensinBudget = $derived(findBudget('Bensin', 'monthly'));
+	const makanMonthlyBudget = $derived(summary?.makan_month ?? null);
+	const bensinMonthlyBudget = $derived(summary?.bensin_month ?? null);
 
 	async function loadSummary(): Promise<void> {
 		loading = true;
@@ -84,10 +86,24 @@
 				<p class="card-title">Pengeluaran Bulan Ini</p>
 				<p class="card-value">{formatRupiah(summary.month_expense)}</p>
 			</article>
-			<article class="card">
-				<p class="card-title">Sisa Budget</p>
-				<p class="card-value">{formatRupiah(summary.remaining_budget)}</p>
-			</article>
+			{#if makanMonthlyBudget}
+				<article class="card">
+					<p class="card-title">Sisa Budget Makan (Bulanan)</p>
+					<p class="card-value">{formatRupiah(makanMonthlyBudget.remaining)}</p>
+					<p class="muted">
+						{formatRupiah(makanMonthlyBudget.used)} / {formatRupiah(makanMonthlyBudget.limit)}
+					</p>
+				</article>
+			{/if}
+			{#if bensinMonthlyBudget}
+				<article class="card">
+					<p class="card-title">Sisa Budget Bensin (Bulanan)</p>
+					<p class="card-value">{formatRupiah(bensinMonthlyBudget.remaining)}</p>
+					<p class="muted">
+						{formatRupiah(bensinMonthlyBudget.used)} / {formatRupiah(bensinMonthlyBudget.limit)}
+					</p>
+				</article>
+			{/if}
 		</div>
 
 		<section class="section-card">

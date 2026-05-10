@@ -114,6 +114,7 @@ type dashboardSummaryResponse struct {
 	MonthExpense    int64         `json:"month_expense"`
 	RemainingBudget int64         `json:"remaining_budget"`
 	MakanToday      *BudgetCheck  `json:"makan_today,omitempty"`
+	MakanMonth      *BudgetCheck  `json:"makan_month,omitempty"`
 	BensinMonth     *BudgetCheck  `json:"bensin_month,omitempty"`
 	BudgetUsage     []BudgetCheck `json:"budget_usage"`
 }
@@ -263,6 +264,7 @@ func (a *appServer) handleDashboardSummary(w http.ResponseWriter, r *http.Reques
 	var totalExpense int64
 	var todayExpense int64
 	var monthExpense int64
+	monthExpenseByCategory := map[string]int64{}
 
 	for _, trx := range a.store.transactions {
 		if trx.Type == "income" {
@@ -275,23 +277,28 @@ func (a *appServer) handleDashboardSummary(w http.ResponseWriter, r *http.Reques
 		}
 		if strings.HasPrefix(trx.Date, month) {
 			monthExpense += trx.Amount
+			monthExpenseByCategory[strings.ToLower(trx.Category)] += trx.Amount
 		}
 	}
 
 	budgetUsage := make([]BudgetCheck, 0, len(a.store.budgetRules))
-	var remainingBudget int64
 
+	var dailyMakanRule *BudgetRule
 	for _, rule := range a.store.budgetRules {
 		referenceDate, err := referenceDateForRule(rule.Period, now)
 		if err != nil {
 			continue
 		}
+		if strings.EqualFold(rule.Category, "Makan") && rule.Period == "daily" {
+			ruleCopy := rule
+			dailyMakanRule = &ruleCopy
+		}
 		check := a.store.buildBudgetCheck(rule, referenceDate, 0, 0)
 		budgetUsage = append(budgetUsage, check)
-		remainingBudget += check.Remaining
 	}
 
 	var makanToday *BudgetCheck
+	var makanMonth *BudgetCheck
 	var bensinMonth *BudgetCheck
 	for i := range budgetUsage {
 		item := budgetUsage[i]
@@ -305,12 +312,42 @@ func (a *appServer) handleDashboardSummary(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
+	if dailyMakanRule != nil {
+		daysCount := int64(daysInMonth(now))
+		monthlyLimit := dailyMakanRule.Limit * daysCount
+		monthlyUsed := monthExpenseByCategory[strings.ToLower(dailyMakanRule.Category)]
+		percentage := 0.0
+		if monthlyLimit > 0 {
+			percentage = (float64(monthlyUsed) / float64(monthlyLimit)) * 100
+		}
+
+		check := BudgetCheck{
+			Category:   dailyMakanRule.Category,
+			Period:     "monthly",
+			Limit:      monthlyLimit,
+			Used:       monthlyUsed,
+			Remaining:  monthlyLimit - monthlyUsed,
+			Percentage: percentage,
+			OverBudget: monthlyUsed > monthlyLimit,
+		}
+		makanMonth = &check
+	}
+
+	var remainingBudget int64
+	if makanMonth != nil {
+		remainingBudget += makanMonth.Remaining
+	}
+	if bensinMonth != nil {
+		remainingBudget += bensinMonth.Remaining
+	}
+
 	writeJSON(w, http.StatusOK, dashboardSummaryResponse{
 		CurrentBalance:  totalIncome - totalExpense,
 		TodayExpense:    todayExpense,
 		MonthExpense:    monthExpense,
 		RemainingBudget: remainingBudget,
 		MakanToday:      makanToday,
+		MakanMonth:      makanMonth,
 		BensinMonth:     bensinMonth,
 		BudgetUsage:     budgetUsage,
 	})
@@ -883,6 +920,10 @@ func referenceDateForRule(period string, source time.Time) (time.Time, error) {
 	default:
 		return time.Time{}, errors.New("periode tidak valid")
 	}
+}
+
+func daysInMonth(source time.Time) int {
+	return time.Date(source.Year(), source.Month()+1, 0, 0, 0, 0, 0, source.Location()).Day()
 }
 
 func normalizeTransactionInput(input transactionInput) (Transaction, error) {
