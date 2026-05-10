@@ -57,9 +57,22 @@
 
 	let profileOpen = $state(false);
 	let settingsOpen = $state(false);
-	let editUsername = $state('Rasa Saufar');
-	let editEmail = $state('rasas@example.com');
+	
+	let username = $state('Rasa Saufar');
+	let userEmail = $state('rasas@example.com');
+
+	let editUsername = $state(username);
+	let editEmail = $state(userEmail);
 	let editPassword = $state('');
+
+	let userInitials = $derived(username.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || 'U');
+
+	function handleSaveSettings(e: Event) {
+		e.preventDefault();
+		username = editUsername;
+		userEmail = editEmail;
+		settingsOpen = false;
+	}
 
 	async function handleLogout(): Promise<void> {
 		clearAuthToken();
@@ -96,9 +109,9 @@
 			<div class="sidebar-bottom">
 				<div class="profile-widget">
 					<button class="profile-button" type="button" onclick={() => profileOpen = !profileOpen}>
-						<div class="profile-avatar">RS</div>
+						<div class="profile-avatar">{userInitials}</div>
 						<div class="profile-info">
-							<p class="profile-name">Rasa Saufar</p>
+							<p class="profile-name">{username}</p>
 							<p class="profile-role">Admin</p>
 						</div>
 					</button>
@@ -106,9 +119,9 @@
 					{#if profileOpen}
 						<div class="profile-popup">
 							<div class="popup-header">
-								<p class="popup-email">rasas@example.com</p>
+								<p class="popup-email">{userEmail}</p>
 							</div>
-							<button class="popup-item" type="button" onclick={() => { settingsOpen = true; profileOpen = false; }}>Pengaturan Akun</button>
+							<button class="popup-item" type="button" onclick={() => { editUsername = username; editEmail = userEmail; editPassword = ''; settingsOpen = true; profileOpen = false; }}>Pengaturan Akun</button>
 							<button class="popup-item" type="button">Bantuan</button>
 						</div>
 					{/if}
@@ -142,9 +155,9 @@
 				<h2 class="section-title">Pengaturan Akun</h2>
 				<p class="muted" style="margin-bottom: 1.5rem;">Update informasi profil Anda di sini.</p>
 
-				<form class="form-grid" onsubmit={(e) => { e.preventDefault(); settingsOpen = false; }}>
+				<form class="form-grid" onsubmit={handleSaveSettings}>
 					<div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 0.5rem;">
-						<div class="profile-avatar" style="width: 4rem; height: 4rem; font-size: 1.5rem;">RS</div>
+						<div class="profile-avatar" style="width: 4rem; height: 4rem; font-size: 1.5rem;">{editUsername.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || 'U'}</div>
 						<button class="button-secondary" type="button" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; border-radius: 0.5rem; min-height: unset;">Ubah Avatar</button>
 					</div>
 
