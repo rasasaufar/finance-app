@@ -294,6 +294,51 @@ main.withNavigation {
 	background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
 }
 
+.card.income {
+	background: linear-gradient(135deg, rgba(16, 185, 129, 0.08), rgba(24, 24, 27, 0.6));
+	border-color: rgba(16, 185, 129, 0.2);
+}
+.card.income::before {
+	background: linear-gradient(90deg, transparent, rgba(16, 185, 129, 0.4), transparent);
+}
+.card.income .card-title { color: #6ee7b7; }
+
+.card.expense {
+	background: linear-gradient(135deg, rgba(239, 68, 68, 0.08), rgba(24, 24, 27, 0.6));
+	border-color: rgba(239, 68, 68, 0.2);
+}
+.card.expense::before {
+	background: linear-gradient(90deg, transparent, rgba(239, 68, 68, 0.4), transparent);
+}
+.card.expense .card-title { color: #fca5a5; }
+
+.card.master {
+	background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(24, 24, 27, 0.6));
+	border-color: rgba(139, 92, 246, 0.25);
+}
+.card.master::before {
+	background: linear-gradient(90deg, transparent, rgba(139, 92, 246, 0.4), transparent);
+}
+.card.master .card-title { color: #c4b5fd; }
+
+.card.info {
+	background: linear-gradient(135deg, rgba(59, 130, 246, 0.08), rgba(24, 24, 27, 0.6));
+	border-color: rgba(59, 130, 246, 0.2);
+}
+.card.info::before {
+	background: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.4), transparent);
+}
+.card.info .card-title { color: #93c5fd; }
+
+.card.warning {
+	background: linear-gradient(135deg, rgba(245, 158, 11, 0.08), rgba(24, 24, 27, 0.6));
+	border-color: rgba(245, 158, 11, 0.2);
+}
+.card.warning::before {
+	background: linear-gradient(90deg, transparent, rgba(245, 158, 11, 0.4), transparent);
+}
+.card.warning .card-title { color: #fcd34d; }
+
 .card-title {
 	margin: 0;
 	font-size: 0.85rem;
