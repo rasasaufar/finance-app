@@ -18,41 +18,59 @@
 			href: '/dashboard',
 			label: 'Dashboard',
 			shortLabel: 'Dash',
-			icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>'
+			num: '01',
+			icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>'
 		},
 		{
 			href: '/transactions',
 			label: 'Transaksi',
 			shortLabel: 'Trans',
-			icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>'
+			num: '02',
+			icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17l10-10M17 7H9M17 7v8"></path><path d="M17 17H7M7 17V9"></path></svg>'
 		},
 		{
 			href: '/budget-rules',
 			label: 'Budget',
 			shortLabel: 'Budget',
-			icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>'
+			num: '03',
+			icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 3v9l6 3"></path></svg>'
 		},
 		{
 			href: '/salary-masters',
 			label: 'Master Gaji',
 			shortLabel: 'Gaji',
-			icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"></rect><path d="M2 10h20"></path><circle cx="12" cy="14" r="2"></circle></svg>'
+			num: '04',
+			icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="1"></rect><circle cx="12" cy="12" r="2"></circle><path d="M6 10v4M18 10v4"></path></svg>'
 		},
 		{
 			href: '/categories',
 			label: 'Kategori',
 			shortLabel: 'Kat',
-			icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>'
+			num: '05',
+			icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"></path></svg>'
 		},
 		{
 			href: '/reports',
 			label: 'Laporan',
 			shortLabel: 'Lap',
-			icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>'
+			num: '06',
+			icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"></path><path d="M7 14l4-4 3 3 5-6"></path></svg>'
 		}
 	];
 
 	const currentPath = $derived(page.url.pathname);
+	const todayLabel = new Intl.DateTimeFormat('id-ID', {
+		weekday: 'long',
+		day: 'numeric',
+		month: 'long',
+		year: 'numeric'
+	}).format(new Date());
+
+	const issueNumber = $derived(
+		new Intl.DateTimeFormat('id-ID', { year: 'numeric', month: '2-digit' })
+			.format(new Date())
+			.replace('/', '.')
+	);
 
 	function isActive(path: string): boolean {
 		return currentPath === path;
@@ -60,7 +78,7 @@
 
 	let profileOpen = $state(false);
 	let settingsOpen = $state(false);
-	
+
 	let username = $state('Rasa Saufar');
 	let userEmail = $state('rasas@example.com');
 
@@ -68,7 +86,14 @@
 	let editEmail = $state('');
 	let editPassword = $state('');
 
-	let userInitials = $derived(username.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || 'U');
+	let userInitials = $derived(
+		username
+			.split(' ')
+			.map((n) => n[0])
+			.join('')
+			.substring(0, 2)
+			.toUpperCase() || 'U'
+	);
 
 	let saveError = $state('');
 	let saving = $state(false);
@@ -111,7 +136,7 @@
 			editUsername = me.name;
 			editEmail = me.email;
 		} catch {
-			// Jangan ganggu UX layout jika profile sementara gagal dimuat.
+			// Biarkan UX tetap lanjut walau profile gagal dimuat sementara.
 		}
 	}
 
@@ -127,37 +152,44 @@
 
 <svelte:head>
 	<link rel="icon" href={favicon} />
-	<title>Dompet Pribadi</title>
+	<title>Buku Kas Pribadi — Dompet</title>
 	<meta name="viewport" content="width=device-width, initial-scale=1" />
 </svelte:head>
 
 <div class="app-shell">
 	{#if data.isLoggedIn}
 		<aside class="sidebar">
-			<div class="brand">
-				<span class="brand-badge">DP</span>
-				<div>
-					<p class="brand-title">Dompet Pribadi</p>
-					<p class="brand-subtitle">Kontrol Budget Harian</p>
+			<div class="sidebar-masthead">
+				<p class="masthead-eyebrow">Buku Kas · Edisi {issueNumber}</p>
+				<h1 class="masthead-title">Dompet <em>Pribadi</em></h1>
+				<div class="masthead-meta">
+					<span>{todayLabel}</span>
+					<span>№ {issueNumber}</span>
 				</div>
 			</div>
 
 			<nav class="sidebar-nav">
 				{#each navItems as item}
 					<a class:active={isActive(item.href)} href={item.href}>
+						<span class="nav-num">{item.num}</span>
 						{@html item.icon}
-						{item.label}
+						<span>{item.label}</span>
+						<span class="nav-arrow">→</span>
 					</a>
 				{/each}
 			</nav>
 
 			<div class="sidebar-bottom">
 				<div class="profile-widget">
-					<button class="profile-button" type="button" onclick={() => profileOpen = !profileOpen}>
+					<button
+						class="profile-button"
+						type="button"
+						onclick={() => (profileOpen = !profileOpen)}
+					>
 						<div class="profile-avatar">{userInitials}</div>
 						<div class="profile-info">
 							<p class="profile-name">{username}</p>
-							<p class="profile-role">Admin</p>
+							<p class="profile-role">Pemilik Buku Kas</p>
 						</div>
 					</button>
 
@@ -166,13 +198,23 @@
 							<div class="popup-header">
 								<p class="popup-email">{userEmail}</p>
 							</div>
-							<button class="popup-item" type="button" onclick={() => { editUsername = username; editEmail = userEmail; editPassword = ''; settingsOpen = true; profileOpen = false; }}>Pengaturan Akun</button>
+							<button
+								class="popup-item"
+								type="button"
+								onclick={() => {
+									editUsername = username;
+									editEmail = userEmail;
+									editPassword = '';
+									settingsOpen = true;
+									profileOpen = false;
+								}}>Pengaturan Akun</button
+							>
 							<button class="popup-item" type="button">Bantuan</button>
 						</div>
 					{/if}
 				</div>
 
-				<button class="logout-button" type="button" onclick={handleLogout}>Keluar</button>
+				<button class="logout-button" type="button" onclick={handleLogout}>Keluar dari Buku</button>
 			</div>
 		</aside>
 	{/if}
@@ -195,15 +237,33 @@
 	{#if settingsOpen}
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
 		<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-		<div class="modal-backdrop" onclick={() => settingsOpen = false} role="presentation">
+		<div class="modal-backdrop" onclick={() => (settingsOpen = false)} role="presentation">
 			<div class="modal-card" onclick={(e) => e.stopPropagation()} role="dialog" tabindex="-1">
-				<h2 class="section-title">Pengaturan Akun</h2>
-				<p class="muted" style="margin-bottom: 1.5rem;">Update informasi profil Anda di sini.</p>
+				<p class="muted mono" style="margin-bottom: 0.35rem;">Preferensi · Akun</p>
+				<h2 class="section-title" style="margin-bottom: 1rem;">Pengaturan Akun</h2>
+				<p class="muted" style="margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 1px dashed var(--rule);">
+					Perbarui informasi pemilik buku kas.
+				</p>
 
 				<form class="form-grid" onsubmit={handleSaveSettings}>
-					<div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 0.5rem;">
-						<div class="profile-avatar" style="width: 4rem; height: 4rem; font-size: 1.5rem;">{editUsername.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || 'U'}</div>
-						<button class="button-secondary" type="button" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; border-radius: 0.5rem; min-height: unset;">Ubah Avatar</button>
+					<div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 0.25rem;">
+						<div
+							class="profile-avatar"
+							style="width: 3.5rem; height: 3.5rem; font-size: 1.5rem;"
+						>
+							{editUsername
+								.split(' ')
+								.map((n) => n[0])
+								.join('')
+								.substring(0, 2)
+								.toUpperCase() || 'U'}
+						</div>
+						<div>
+							<p class="muted mono" style="margin: 0 0 0.25rem;">Avatar inisial</p>
+							<p class="muted" style="font-size: 0.8rem;">
+								Dihitung otomatis dari nama lengkap.
+							</p>
+						</div>
 					</div>
 
 					<label class="field">
@@ -216,16 +276,27 @@
 					</label>
 					<label class="field">
 						<span>Password Baru</span>
-						<input type="password" bind:value={editPassword} placeholder="Kosongkan jika tidak ingin diubah" />
+						<input
+							type="password"
+							bind:value={editPassword}
+							placeholder="Kosongkan jika tidak diubah"
+						/>
 					</label>
 
 					{#if saveError}
-						<p style="color: #ef4444; font-size: 0.85rem; margin-top: 0.5rem;">{saveError}</p>
+						<p class="error">{saveError}</p>
 					{/if}
-				
-					<div style="display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1rem;">
-						<button class="button-secondary" type="button" onclick={() => settingsOpen = false} disabled={saving}>Batal</button>
-						<button class="button-primary" type="submit" disabled={saving}>{saving ? 'Menyimpan...' : 'Simpan'}</button>
+
+					<div class="button-row" style="justify-content: flex-end;">
+						<button
+							class="button-secondary"
+							type="button"
+							onclick={() => (settingsOpen = false)}
+							disabled={saving}>Batal</button
+						>
+						<button class="button-primary" type="submit" disabled={saving}
+							>{saving ? 'Menyimpan…' : 'Simpan Perubahan'}</button
+						>
 					</div>
 				</form>
 			</div>

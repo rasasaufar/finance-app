@@ -16,6 +16,13 @@
 	let period = $state<BudgetPeriod>('daily');
 	let limit = $state('');
 
+	const todayLabel = new Intl.DateTimeFormat('id-ID', {
+		weekday: 'long',
+		day: 'numeric',
+		month: 'long',
+		year: 'numeric'
+	}).format(new Date());
+
 	function resetForm(): void {
 		editingId = null;
 		period = 'daily';
@@ -137,14 +144,27 @@
 
 <section class="page">
 	<header class="page-header">
-		<div>
-			<h1 class="page-title">Budget</h1>
-			<p class="page-subtitle">Atur batas pengeluaran harian, mingguan, dan bulanan.</p>
+		<div class="page-header-top">
+			<span><span class="issue-mark">§</span> 03 · Peraturan Kantong</span>
+			<span>{todayLabel}</span>
+		</div>
+		<div class="page-header-main">
+			<div>
+				<h1 class="page-title">Aturan <em>Budget</em></h1>
+				<p class="page-subtitle">
+					Tetapkan pagar pembatas pengeluaran — harian, mingguan, atau bulanan.
+				</p>
+			</div>
 		</div>
 	</header>
 
 	<section class="section-card">
-		<h2 class="section-title">{editingId ? 'Edit Aturan Budget' : 'Tambah Aturan Budget'}</h2>
+		<h2 class="section-title">
+			{editingId ? 'Edit Aturan' : 'Tambah Aturan Baru'}
+		</h2>
+		<p class="section-lede">
+			Setiap kategori boleh memiliki beberapa periode budget yang berbeda.
+		</p>
 
 		{#if errorMessage}
 			<p class="error">{errorMessage}</p>
@@ -175,13 +195,13 @@
 			</div>
 
 			<label class="field">
-				<span>Limit Budget</span>
+				<span>Limit Budget (Rp)</span>
 				<input type="number" bind:value={limit} min="1" placeholder="Contoh: 60000" required />
 			</label>
 
 			<div class="button-row">
 				<button class="button-primary" type="submit" disabled={saving}>
-					{saving ? 'Menyimpan...' : editingId ? 'Perbarui Budget' : 'Tambah Budget'}
+					{saving ? 'Menyimpan…' : editingId ? 'Perbarui Aturan' : 'Tambah Aturan'}
 				</button>
 				{#if editingId}
 					<button class="button-secondary" type="button" onclick={handleCancel}>Batal Edit</button>
@@ -191,29 +211,44 @@
 	</section>
 
 	<section class="section-card">
-		<h2 class="section-title">Daftar Aturan Budget</h2>
+		<h2 class="section-title">Daftar Aturan</h2>
+		<p class="section-lede">
+			Total {rules.length} aturan tercatat saat ini.
+		</p>
 		{#if loading}
-			<p class="muted">Memuat aturan budget...</p>
+			<p class="muted mono">Memuat aturan budget…</p>
 		{:else if rules.length === 0}
-			<p class="muted">Belum ada aturan budget.</p>
+			<p class="muted">Belum ada aturan budget yang dibuat.</p>
 		{:else}
-			<div class="list">
-				{#each rules as rule}
-					<article class="list-item">
-						<div class="list-item-header">
-							<div>
-								<strong>{rule.category}</strong>
-								<p class="muted">{formatPeriod(rule.period)}</p>
-							</div>
-							<p class="card-value">{formatRupiah(rule.limit)}</p>
+			<div class="rule-list">
+				{#each rules as rule, i}
+					<article class="rule-row" class:is-editing={editingId === rule.id}>
+						<div class="rule-index">
+							<span class="mono tiny">№</span>
+							<span class="rule-num">{String(i + 1).padStart(2, '0')}</span>
 						</div>
-						<div class="button-row">
-							<button class="button-secondary" type="button" onclick={() => handleEdit(rule)}
-								>Edit</button
+						<div class="rule-body">
+							<div class="rule-head">
+								<h3 class="rule-name">{rule.category}</h3>
+								<span class="badge rule-period">{formatPeriod(rule.period)}</span>
+							</div>
+							<p class="rule-amount money-display">{formatRupiah(rule.limit)}</p>
+						</div>
+						<div class="rule-actions">
+							<button
+								class="button-ghost"
+								type="button"
+								onclick={() => handleEdit(rule)}
 							>
-							<button class="button-danger" type="button" onclick={() => handleDelete(rule.id)}
-								>Hapus</button
+								Edit
+							</button>
+							<button
+								class="button-ghost danger"
+								type="button"
+								onclick={() => handleDelete(rule.id)}
 							>
+								Hapus
+							</button>
 						</div>
 					</article>
 				{/each}
@@ -221,3 +256,111 @@
 		{/if}
 	</section>
 </section>
+
+<style>
+	.tiny {
+		font-size: 0.6rem;
+		letter-spacing: 0.15em;
+		text-transform: uppercase;
+	}
+
+	.badge.rule-period {
+		color: var(--indigo);
+		background: var(--indigo-soft);
+	}
+
+	.rule-list {
+		display: grid;
+		gap: 0;
+		border-top: 1px solid var(--rule);
+	}
+
+	.rule-row {
+		display: grid;
+		grid-template-columns: auto 1fr auto;
+		align-items: center;
+		gap: 1rem;
+		padding: 1rem 0;
+		border-bottom: 1px solid var(--rule);
+		transition: background 0.2s;
+	}
+
+	.rule-row.is-editing {
+		background: var(--ochre-soft);
+		margin: 0 -1rem;
+		padding: 1rem;
+		border-bottom-color: var(--ochre);
+	}
+
+	.rule-index {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.1rem;
+		color: var(--ink-faint);
+	}
+
+	.rule-num {
+		font-family: var(--font-display);
+		font-size: 1.5rem;
+		line-height: 1;
+		color: var(--ink);
+	}
+
+	.rule-body {
+		min-width: 0;
+	}
+
+	.rule-head {
+		display: flex;
+		align-items: center;
+		gap: 0.6rem;
+		flex-wrap: wrap;
+		margin-bottom: 0.25rem;
+	}
+
+	.rule-name {
+		margin: 0;
+		font-family: var(--font-display);
+		font-size: 1.35rem;
+		line-height: 1;
+		color: var(--ink);
+	}
+
+	.rule-amount {
+		margin: 0;
+		font-size: 1.1rem;
+		color: var(--ink);
+		font-variant-numeric: tabular-nums;
+		letter-spacing: -0.01em;
+	}
+
+	.rule-actions {
+		display: flex;
+		gap: 1rem;
+		flex-shrink: 0;
+	}
+
+	.button-ghost.danger {
+		color: var(--oxblood);
+		border-bottom-color: var(--oxblood);
+	}
+
+	.button-ghost.danger:hover {
+		color: var(--ink);
+		border-bottom-color: var(--ink);
+	}
+
+	@media (max-width: 520px) {
+		.rule-row {
+			grid-template-columns: auto 1fr;
+		}
+
+		.rule-actions {
+			grid-column: 1 / -1;
+			justify-content: flex-end;
+			padding-top: 0.35rem;
+			border-top: 1px dashed var(--rule);
+		}
+	}
+</style>

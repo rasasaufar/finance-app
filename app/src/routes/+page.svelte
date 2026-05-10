@@ -1,1 +1,1 @@
-<p class="muted">Mengalihkan ke dashboard...</p>
+<p class="muted mono">Mengalihkan ke lembar ringkasan…</p>

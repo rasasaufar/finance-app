@@ -17,6 +17,13 @@
 	let showDeleteConfirmModal = $state(false);
 	let pendingDelete = $state<SalaryMaster | null>(null);
 
+	const todayLabel = new Intl.DateTimeFormat('id-ID', {
+		weekday: 'long',
+		day: 'numeric',
+		month: 'long',
+		year: 'numeric'
+	}).format(new Date());
+
 	function toSalaryMasterArray(input: unknown): SalaryMaster[] {
 		return Array.isArray(input) ? (input as SalaryMaster[]) : [];
 	}
@@ -103,7 +110,7 @@
 		try {
 			summary = await api.get<DashboardSummary>('/dashboard/summary');
 		} catch {
-			// Biarkan user tetap lanjut kerja walau ringkasan sementara gagal disegarkan.
+			// ignored
 		}
 	}
 
@@ -195,11 +202,19 @@
 
 <section class="page">
 	<header class="page-header">
-		<div>
-			<h1 class="page-title">Master Saldo Gaji</h1>
-			<p class="page-subtitle">Kelola nominal gaji bulanan untuk perhitungan saldo otomatis.</p>
+		<div class="page-header-top">
+			<span><span class="issue-mark">§</span> 04 · Arsip Gaji</span>
+			<span>{todayLabel}</span>
 		</div>
-		<button class="button-secondary" type="button" onclick={loadData}>Segarkan</button>
+		<div class="page-header-main">
+			<div>
+				<h1 class="page-title">Master <em>Gaji</em></h1>
+				<p class="page-subtitle">
+					Arsip pendapatan bulanan sebagai dasar perhitungan saldo otomatis.
+				</p>
+			</div>
+			<button class="button-secondary" type="button" onclick={loadData}>↻ Segarkan</button>
+		</div>
 	</header>
 
 	{#if errorMessage}
@@ -210,23 +225,26 @@
 	{/if}
 
 	{#if loading}
-		<p class="muted">Memuat data master gaji...</p>
+		<p class="muted mono">Memuat arsip gaji…</p>
 	{:else}
 		{#if summary}
 			<div class="card-grid">
-				<article class="card">
-					<p class="card-title">Master Gaji Bulan Ini</p>
-					<p class="card-value">{formatRupiah(summary.salary_current_month)}</p>
+				<article class="card master">
+					<p class="card-title">Gaji · Bulan Ini</p>
+					<p class="card-value money">{formatRupiah(summary.salary_current_month)}</p>
 				</article>
-				<article class="card">
-					<p class="card-title">Akumulasi Master Gaji</p>
-					<p class="card-value">{formatRupiah(summary.salary_total_to_date)}</p>
+				<article class="card master">
+					<p class="card-title">Akumulasi · Total</p>
+					<p class="card-value money">{formatRupiah(summary.salary_total_to_date)}</p>
 				</article>
 			</div>
 		{/if}
 
 		<section class="section-card">
 			<h2 class="section-title">{editingSalaryId ? 'Edit Master Gaji' : 'Tambah Master Gaji'}</h2>
+			<p class="section-lede">
+				Setiap bulan dapat memiliki satu catatan gaji resmi.
+			</p>
 			<form class="form-grid" onsubmit={handleSubmit}>
 				<div class="form-row">
 					<label class="field">
@@ -234,7 +252,7 @@
 						<input type="month" bind:value={salaryMonth} required />
 					</label>
 					<label class="field">
-						<span>Nominal Gaji</span>
+						<span>Nominal Gaji (Rp)</span>
 						<input
 							type="number"
 							bind:value={salaryAmount}
@@ -246,48 +264,52 @@
 				</div>
 				<label class="field">
 					<span>Catatan (opsional)</span>
-					<input type="text" bind:value={salaryNote} placeholder="Contoh: gaji pokok + bonus" />
+					<input
+						type="text"
+						bind:value={salaryNote}
+						placeholder="Contoh: gaji pokok + bonus kuartal"
+					/>
 				</label>
 				<div class="button-row">
 					<button class="button-primary" type="submit" disabled={saving}>
 						{saving
-							? 'Menyimpan...'
+							? 'Menyimpan…'
 							: editingSalaryId
 								? 'Perbarui Master Gaji'
-								: 'Tambah Master Gaji'}
+								: 'Arsipkan Master Gaji'}
 					</button>
 					{#if editingSalaryId}
-						<button class="button-secondary" type="button" onclick={resetForm}>
-							Batal Edit
-						</button>
+						<button class="button-secondary" type="button" onclick={resetForm}>Batal Edit</button>
 					{/if}
 				</div>
 			</form>
 		</section>
 
 		<section class="section-card">
-			<h2 class="section-title">Daftar Master Gaji</h2>
-			<div class="list">
-				{#if salaryMasters.length === 0}
-					<div class="list-item">
-						<p class="muted">Belum ada master gaji.</p>
-					</div>
-				{:else}
+			<h2 class="section-title">Arsip Master Gaji</h2>
+			<p class="section-lede">
+				Disusun dari bulan terbaru ke paling lama.
+			</p>
+			{#if salaryMasters.length === 0}
+				<p class="muted">Belum ada master gaji yang diarsipkan.</p>
+			{:else}
+				<div class="salary-list">
 					{#each salaryMasters as item (item.id)}
-						<div class="list-item">
-							<div class="list-item-header">
-								<div>
-									<strong>{formatMonthLabel(item.month)}</strong>
-									<p class="muted">{item.note || 'Tanpa catatan'}</p>
-								</div>
-								<p class="card-value">{formatRupiah(item.amount)}</p>
+						<article class="salary-row" class:is-editing={editingSalaryId === item.id}>
+							<div class="salary-month">
+								<span class="mono tiny">Bulan</span>
+								<span class="salary-month-name">{formatMonthLabel(item.month)}</span>
 							</div>
-							<div class="button-row">
-								<button class="button-secondary" type="button" onclick={() => handleEdit(item)}>
+							<div class="salary-mid">
+								<p class="salary-amount money-display">{formatRupiah(item.amount)}</p>
+								<p class="salary-note">{item.note || 'Tanpa catatan'}</p>
+							</div>
+							<div class="salary-actions">
+								<button class="button-ghost" type="button" onclick={() => handleEdit(item)}>
 									Edit
 								</button>
 								<button
-									class="button-danger"
+									class="button-ghost danger"
 									type="button"
 									onclick={() => openDeleteConfirmModal(item)}
 									disabled={saving}
@@ -295,10 +317,10 @@
 									Hapus
 								</button>
 							</div>
-						</div>
+						</article>
 					{/each}
-				{/if}
-			</div>
+				</div>
+			{/if}
 		</section>
 	{/if}
 </section>
@@ -319,7 +341,10 @@
 			aria-labelledby="confirm-delete-master-gaji-title"
 			tabindex="-1"
 		>
-			<h3 id="confirm-delete-master-gaji-title" class="section-title">Konfirmasi Hapus Master Gaji</h3>
+			<p class="muted mono" style="margin-bottom: 0.35rem;">Konfirmasi · Hapus Arsip</p>
+			<h3 id="confirm-delete-master-gaji-title" class="section-title" style="margin-bottom: 1rem;">
+				Hapus Master Gaji?
+			</h3>
 			<div class="confirm-detail-list">
 				<div class="confirm-detail-row">
 					<span>Bulan</span>
@@ -331,18 +356,123 @@
 				</div>
 				<div class="confirm-detail-row">
 					<span>Catatan</span>
-					<strong>{pendingDelete.note || '-'}</strong>
+					<strong>{pendingDelete.note || '—'}</strong>
 				</div>
 			</div>
-			<p class="muted">Master gaji yang dihapus akan mengubah perhitungan saldo saat ini.</p>
-			<div class="button-row">
-				<button class="button-secondary" type="button" onclick={closeDeleteConfirmModal} disabled={saving}>
+			<p class="muted" style="font-style: italic; font-family: var(--font-display); font-size: 0.95rem;">
+				Menghapus master gaji akan mengubah perhitungan saldo saat ini.
+			</p>
+			<div class="button-row" style="justify-content: flex-end;">
+				<button
+					class="button-secondary"
+					type="button"
+					onclick={closeDeleteConfirmModal}
+					disabled={saving}
+				>
 					Batal
 				</button>
 				<button class="button-danger" type="button" onclick={confirmDelete} disabled={saving}>
-					{saving ? 'Menghapus...' : 'Ya, Hapus Master Gaji'}
+					{saving ? 'Menghapus…' : 'Ya, Hapus'}
 				</button>
 			</div>
 		</div>
 	</div>
 {/if}
+
+<style>
+	.tiny {
+		font-size: 0.6rem;
+		letter-spacing: 0.15em;
+		text-transform: uppercase;
+	}
+
+	.salary-list {
+		display: grid;
+		gap: 0;
+		border-top: 1px solid var(--rule);
+	}
+
+	.salary-row {
+		display: grid;
+		grid-template-columns: minmax(8rem, auto) 1fr auto;
+		align-items: center;
+		gap: 1rem;
+		padding: 1rem 0;
+		border-bottom: 1px solid var(--rule);
+	}
+
+	.salary-row.is-editing {
+		background: var(--ochre-soft);
+		margin: 0 -1rem;
+		padding-left: 1rem;
+		padding-right: 1rem;
+	}
+
+	.salary-month {
+		display: flex;
+		flex-direction: column;
+		gap: 0.2rem;
+		color: var(--ink-faint);
+	}
+
+	.salary-month-name {
+		font-family: var(--font-display);
+		font-size: 1.25rem;
+		color: var(--ink);
+		line-height: 1;
+	}
+
+	.salary-mid {
+		display: flex;
+		flex-direction: column;
+		gap: 0.2rem;
+		min-width: 0;
+	}
+
+	.salary-amount {
+		margin: 0;
+		font-size: 1.35rem;
+		color: var(--ink);
+		line-height: 1;
+		letter-spacing: -0.015em;
+	}
+
+	.salary-note {
+		margin: 0;
+		font-size: 0.85rem;
+		color: var(--ink-soft);
+		font-style: italic;
+		font-family: var(--font-display);
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.salary-actions {
+		display: flex;
+		gap: 1rem;
+		flex-shrink: 0;
+	}
+
+	.button-ghost.danger {
+		color: var(--oxblood);
+		border-bottom-color: var(--oxblood);
+	}
+
+	.button-ghost.danger:hover {
+		color: var(--ink);
+		border-bottom-color: var(--ink);
+	}
+
+	@media (max-width: 560px) {
+		.salary-row {
+			grid-template-columns: 1fr;
+			gap: 0.5rem;
+		}
+
+		.salary-actions {
+			padding-top: 0.35rem;
+			border-top: 1px dashed var(--rule);
+			justify-content: flex-end;
+		}
+	}
+</style>
