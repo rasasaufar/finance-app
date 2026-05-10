@@ -289,6 +289,7 @@ func (a *appServer) handleDashboardSummary(w http.ResponseWriter, r *http.Reques
 	var todayExpense int64
 	var monthExpense int64
 	monthExpenseByCategory := map[string]int64{}
+	monthExpenseLabelByCategory := map[string]string{}
 	salaryCurrentMonth := a.store.salaryForMonthLocked(month)
 	salaryTotalToDate := a.store.sumSalaryToMonthLocked(month)
 
@@ -306,14 +307,28 @@ func (a *appServer) handleDashboardSummary(w http.ResponseWriter, r *http.Reques
 		}
 		if strings.HasPrefix(trx.Date, month) {
 			monthExpense += trx.Amount
-			monthExpenseByCategory[strings.ToLower(trx.Category)] += trx.Amount
+			categoryKey := strings.ToLower(strings.TrimSpace(trx.Category))
+			monthExpenseByCategory[categoryKey] += trx.Amount
+			if _, exists := monthExpenseLabelByCategory[categoryKey]; !exists {
+				monthExpenseLabelByCategory[categoryKey] = strings.TrimSpace(trx.Category)
+			}
 		}
 	}
 
 	budgetUsage := make([]BudgetCheck, 0, len(a.store.budgetRules))
+	budgetRuleCategorySet := map[string]struct{}{}
+	var bensinMonthlyRuleLimit int64
 
 	var dailyMakanRule *BudgetRule
 	for _, rule := range a.store.budgetRules {
+		ruleCategoryKey := strings.ToLower(strings.TrimSpace(rule.Category))
+		if ruleCategoryKey != "" {
+			budgetRuleCategorySet[ruleCategoryKey] = struct{}{}
+		}
+		if strings.EqualFold(rule.Category, "Bensin") && rule.Period == "monthly" {
+			bensinMonthlyRuleLimit += rule.Limit
+		}
+
 		referenceDate, err := referenceDateForRule(rule.Period, now)
 		if err != nil {
 			continue
@@ -324,6 +339,47 @@ func (a *appServer) handleDashboardSummary(w http.ResponseWriter, r *http.Reques
 		}
 		check := a.store.buildBudgetCheck(rule, referenceDate, 0, 0)
 		budgetUsage = append(budgetUsage, check)
+	}
+
+	makanMonthlyRuleLimit := int64(0)
+	if dailyMakanRule != nil {
+		makanMonthlyRuleLimit = dailyMakanRule.Limit * int64(daysInMonth(now))
+	}
+	otherCategoryLimit := salaryCurrentMonth - makanMonthlyRuleLimit - bensinMonthlyRuleLimit
+	if otherCategoryLimit < 0 {
+		otherCategoryLimit = 0
+	}
+
+	// Tetap tampilkan pemakaian kategori yang punya transaksi bulanan walau belum punya rule budget.
+	for categoryKey, used := range monthExpenseByCategory {
+		if used <= 0 {
+			continue
+		}
+		if _, exists := budgetRuleCategorySet[categoryKey]; exists {
+			continue
+		}
+
+		categoryLabel := monthExpenseLabelByCategory[categoryKey]
+		if categoryLabel == "" {
+			categoryLabel = categoryKey
+		}
+
+		percentage := 0.0
+		if otherCategoryLimit > 0 {
+			percentage = (float64(used) / float64(otherCategoryLimit)) * 100
+		} else if used > 0 {
+			percentage = 100
+		}
+
+		budgetUsage = append(budgetUsage, BudgetCheck{
+			Category:   categoryLabel,
+			Period:     "monthly",
+			Limit:      otherCategoryLimit,
+			Used:       used,
+			Remaining:  otherCategoryLimit - used,
+			Percentage: percentage,
+			OverBudget: used > otherCategoryLimit,
+		})
 	}
 
 	var makanToday *BudgetCheck
