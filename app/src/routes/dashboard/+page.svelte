@@ -74,28 +74,28 @@
 		<p class="muted">Memuat ringkasan...</p>
 	{:else if summary}
 		<div class="card-grid wide">
-			<article class="card">
+			<article class="card income">
 				<p class="card-title">Saldo Saat Ini</p>
 				<p class="card-value">{formatRupiah(summary.current_balance)}</p>
 			</article>
-			<article class="card">
+			<article class="card expense">
 				<p class="card-title">Pengeluaran Hari Ini</p>
 				<p class="card-value">{formatRupiah(summary.today_expense)}</p>
 			</article>
-			<article class="card">
+			<article class="card expense">
 				<p class="card-title">Pengeluaran Bulan Ini</p>
 				<p class="card-value">{formatRupiah(summary.month_expense)}</p>
 			</article>
-			<article class="card">
+			<article class="card master">
 				<p class="card-title">Master Gaji Bulan Ini</p>
 				<p class="card-value">{formatRupiah(summary.salary_current_month)}</p>
 			</article>
-			<article class="card">
+			<article class="card master">
 				<p class="card-title">Akumulasi Master Gaji</p>
 				<p class="card-value">{formatRupiah(summary.salary_total_to_date)}</p>
 			</article>
 			{#if makanMonthlyBudget}
-				<article class="card">
+				<article class="card info">
 					<p class="card-title">Sisa Budget Makan (Bulanan)</p>
 					<p class="card-value">{formatRupiah(makanMonthlyBudget.remaining)}</p>
 					<p class="muted">
@@ -104,7 +104,7 @@
 				</article>
 			{/if}
 			{#if bensinMonthlyBudget}
-				<article class="card">
+				<article class="card info">
 					<p class="card-title">Sisa Budget Bensin (Bulanan)</p>
 					<p class="card-value">{formatRupiah(bensinMonthlyBudget.remaining)}</p>
 					<p class="muted">

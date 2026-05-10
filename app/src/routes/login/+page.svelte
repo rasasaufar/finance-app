@@ -65,7 +65,6 @@
 			</button>
 		</form>
 
-		<p class="notice">Akun demo: rasas@example.com / password123</p>
 	</div>
 </section>
 
@@ -74,47 +73,72 @@
 		min-height: calc(100dvh - 2rem);
 		display: grid;
 		align-items: center;
+		justify-content: center;
+		padding: 1rem;
 	}
 
 	.login-card {
-		background: rgba(255, 255, 255, 0.96);
+		background: var(--surface);
+		backdrop-filter: blur(20px);
+		-webkit-backdrop-filter: blur(20px);
 		border: 1px solid var(--line);
-		border-radius: 1.2rem;
-		padding: 1.1rem;
-		max-width: 430px;
+		border-radius: 1.5rem;
+		padding: 1.75rem;
+		max-width: 420px;
 		width: 100%;
-		margin: 0 auto;
-		box-shadow: 0 16px 28px -24px rgba(11, 30, 60, 0.55);
+		box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+		position: relative;
+		overflow: hidden;
+	}
+
+	.login-card::before {
+		content: '';
+		position: absolute;
+		top: 0; left: 0; right: 0;
+		height: 1px;
+		background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
 	}
 
 	.login-tag {
-		margin: 0;
-		color: var(--primary);
-		font-size: 0.74rem;
-		font-weight: 800;
-		letter-spacing: 0.08em;
+		margin: 0 0 1rem;
+		color: #93c5fd;
+		background: rgba(59, 130, 246, 0.15);
+		display: inline-block;
+		padding: 0.35rem 0.75rem;
+		border-radius: 2rem;
+		font-size: 0.75rem;
+		font-weight: 700;
+		letter-spacing: 0.05em;
 		text-transform: uppercase;
+		border: 1px solid rgba(59, 130, 246, 0.2);
 	}
 
 	.login-title {
-		margin: 0.65rem 0 0;
-		font-size: 1.42rem;
+		margin: 0;
+		font-size: 1.75rem;
 		font-weight: 800;
+		letter-spacing: -0.02em;
+		background: linear-gradient(to right, #fff, #a1a1aa);
+		-webkit-background-clip: text;
+		-webkit-text-fill-color: transparent;
 	}
 
 	.login-subtitle {
-		margin: 0.45rem 0 1rem;
+		margin: 0.5rem 0 1.5rem;
 		color: var(--text-secondary);
-		font-size: 0.9rem;
+		font-size: 0.95rem;
+		line-height: 1.5;
 	}
 
 	.login-button {
-		min-height: 2.9rem;
+		min-height: 3.2rem;
+		margin-top: 0.5rem;
+		font-size: 1rem;
 	}
 
 	@media (min-width: 768px) {
 		.login-card {
-			padding: 1.4rem;
+			padding: 2.5rem;
 		}
 	}
 </style>
