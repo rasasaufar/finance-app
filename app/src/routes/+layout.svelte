@@ -8,6 +8,8 @@
 	import { page } from '$app/state';
 	import type { User } from '$lib/types';
 
+	const THEME_KEY = 'finance_theme';
+
 	let { children, data } = $props<{
 		children: import('svelte').Snippet;
 		data: { isLoggedIn: boolean };
@@ -58,9 +60,102 @@
 		}
 	];
 
+	// Sidebar quick-action definitions per route
+	const sidebarActions: Record<string, { label: string; href: string; primary?: boolean; icon: string }[]> = {
+		'/transactions': [
+			{
+				label: 'Catat Transaksi',
+				href: '/transactions#form',
+				primary: true,
+				icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>'
+			}
+		],
+		'/budget-rules': [
+			{
+				label: 'Tambah Budget',
+				href: '/budget-rules#form',
+				primary: true,
+				icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>'
+			}
+		],
+		'/salary-masters': [
+			{
+				label: 'Tambah Gaji',
+				href: '/salary-masters#form',
+				primary: true,
+				icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>'
+			}
+		],
+		'/categories': [
+			{
+				label: 'Tambah Kategori',
+				href: '/categories#form',
+				primary: true,
+				icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>'
+			}
+		],
+		'/dashboard': [
+			{
+				label: 'Catat Transaksi',
+				href: '/transactions',
+				primary: true,
+				icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>'
+			},
+			{
+				label: 'Lihat Laporan',
+				href: '/reports',
+				icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg>'
+			}
+		],
+		'/reports': [
+			{
+				label: 'Catat Transaksi',
+				href: '/transactions',
+				primary: true,
+				icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>'
+			}
+		]
+	};
+
 	const AVATAR_KEY = 'finance_avatar';
 
 	const currentPath = $derived(page.url.pathname);
+	const currentActions = $derived(sidebarActions[currentPath] ?? []);
+
+	// ── Dark mode ──
+	let isDark = $state(false);
+
+	function applyTheme(dark: boolean): void {
+		document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+		document.body.setAttribute('data-theme', dark ? 'dark' : 'light');
+	}
+
+	function toggleTheme(): void {
+		isDark = !isDark;
+		applyTheme(isDark);
+		try {
+			localStorage.setItem(THEME_KEY, isDark ? 'dark' : 'light');
+		} catch {
+			// ignore
+		}
+	}
+
+	function loadTheme(): void {
+		try {
+			const saved = localStorage.getItem(THEME_KEY);
+			if (saved === 'dark') {
+				isDark = true;
+			} else if (saved === 'light') {
+				isDark = false;
+			} else {
+				// Respect system preference on first visit
+				isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+			}
+		} catch {
+			isDark = false;
+		}
+		applyTheme(isDark);
+	}
 	const todayLabel = new Intl.DateTimeFormat('id-ID', {
 		weekday: 'long',
 		day: 'numeric',
@@ -272,6 +367,7 @@
 	onMount(() => {
 		loadProfile();
 		loadAvatarFromStorage();
+		loadTheme();
 	});
 </script>
 
@@ -305,6 +401,39 @@
 			</nav>
 
 			<div class="sidebar-bottom">
+				<!-- Quick action buttons — context-aware per page -->
+				{#if currentActions.length > 0}
+					<div class="sidebar-actions">
+						<p class="sidebar-action-label">Aksi Cepat</p>
+						{#each currentActions as action}
+							<a
+								href={action.href}
+								class="sidebar-action-btn"
+								class:primary-action={action.primary}
+							>
+								{@html action.icon}
+								{action.label}
+							</a>
+						{/each}
+					</div>
+				{/if}
+
+				<!-- Theme toggle -->
+				<div class="theme-toggle">
+					<span class="theme-toggle-label">{isDark ? 'Mode Malam' : 'Mode Siang'}</span>
+					<button class="theme-toggle-btn" type="button" onclick={toggleTheme} aria-label="Ganti tema">
+						{#if isDark}
+							<!-- Sun icon -->
+							<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+							Siang
+						{:else}
+							<!-- Moon icon -->
+							<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+							Malam
+						{/if}
+					</button>
+				</div>
+
 				<div class="profile-widget">
 					<button
 						class="profile-button"
