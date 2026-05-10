@@ -1,0 +1,20 @@
+# Node
+node_modules/
+
+# SvelteKit
+app/.svelte-kit/
+app/build/
+app/.env.local
+
+# Go
+api/tmp/
+api/bin/
+
+# Env
+.env
+*.env.local
+
+# OS / Editor
+.DS_Store
+.vscode/
+.idea/
