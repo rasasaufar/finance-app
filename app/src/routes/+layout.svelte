@@ -175,6 +175,11 @@
 
 	let profileOpen = $state(false);
 	let settingsOpen = $state(false);
+	let sidebarOpen = $state(false);
+
+	function closeSidebar(): void {
+		sidebarOpen = false;
+	}
 
 	let username = $state('Rasa Saufar');
 	let userEmail = $state('rasas@example.com');
@@ -404,7 +409,31 @@
 
 <div class="app-shell">
 	{#if data.isLoggedIn}
-		<aside class="sidebar">
+		<!-- Mobile hamburger toggle -->
+		<button
+			class="sidebar-toggle"
+			type="button"
+			onclick={() => (sidebarOpen = !sidebarOpen)}
+			aria-label={sidebarOpen ? 'Tutup menu' : 'Buka menu'}
+			aria-expanded={sidebarOpen}
+		>
+			{#if sidebarOpen}
+				<!-- X icon -->
+				<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+			{:else}
+				<!-- Hamburger icon -->
+				<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+			{/if}
+		</button>
+
+		<!-- Overlay backdrop (mobile only) -->
+		{#if sidebarOpen}
+			<!-- svelte-ignore a11y_click_events_have_key_events -->
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<div class="sidebar-backdrop" onclick={closeSidebar}></div>
+		{/if}
+
+		<aside class="sidebar" class:sidebar-open={sidebarOpen}>
 			<div class="sidebar-masthead">
 				<p class="masthead-eyebrow">Buku Kas · Edisi {issueNumber}</p>
 				<h1 class="masthead-title">Dompet <em>Pribadi</em></h1>
@@ -416,7 +445,7 @@
 
 			<nav class="sidebar-nav">
 				{#each navItems as item}
-					<a class:active={isActive(item.href)} href={item.href}>
+					<a class:active={isActive(item.href)} href={item.href} onclick={closeSidebar}>
 						<span class="nav-num">{item.num}</span>
 						{@html item.icon}
 						<span>{item.label}</span>
@@ -435,6 +464,7 @@
 								href={action.href}
 								class="sidebar-action-btn"
 								class:primary-action={action.primary}
+								onclick={closeSidebar}
 							>
 								{@html action.icon}
 								{action.label}
@@ -499,17 +529,6 @@
 	<main class:withNavigation={data.isLoggedIn}>
 		{@render children()}
 	</main>
-
-	{#if data.isLoggedIn}
-		<nav class="bottom-nav">
-			{#each navItems as item}
-				<a class:active={isActive(item.href)} href={item.href}>
-					{@html item.icon}
-					<span>{item.shortLabel}</span>
-				</a>
-			{/each}
-		</nav>
-	{/if}
 
 	{#if settingsOpen}
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
