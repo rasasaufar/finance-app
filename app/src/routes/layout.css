@@ -159,7 +159,7 @@ textarea {
 
 main {
 	flex: 1;
-	padding: 1.25rem 1.25rem 7.5rem;
+	padding: 4.5rem 1.25rem 2rem;
 	animation: page-fade 0.5s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
@@ -208,11 +208,86 @@ main.withNavigation {
 }
 
 /* =========================================================================
-   SIDEBAR (desktop only)
+   SIDEBAR TOGGLE (mobile hamburger)
+   ========================================================================= */
+
+.sidebar-toggle {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	position: fixed;
+	top: 0.875rem;
+	left: 0.875rem;
+	z-index: 110;
+	width: 2.5rem;
+	height: 2.5rem;
+	background: var(--paper);
+	border: 1.5px solid var(--ink);
+	box-shadow: 3px 3px 0 var(--ink);
+	cursor: pointer;
+	color: var(--ink);
+	transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.sidebar-toggle svg {
+	width: 1.1rem;
+	height: 1.1rem;
+}
+
+.sidebar-toggle:hover {
+	transform: translate(-1px, -1px);
+	box-shadow: 4px 4px 0 var(--ink);
+}
+
+.sidebar-toggle:active {
+	transform: translate(1px, 1px);
+	box-shadow: 1px 1px 0 var(--ink);
+}
+
+/* Backdrop overlay */
+.sidebar-backdrop {
+	display: block;
+	position: fixed;
+	inset: 0;
+	background: rgba(28, 25, 21, 0.45);
+	z-index: 90;
+	backdrop-filter: blur(1px);
+}
+
+/* =========================================================================
+   SIDEBAR
    ========================================================================= */
 
 .sidebar {
-	display: none;
+	display: flex;
+	flex-direction: column;
+	position: fixed;
+	top: 0;
+	left: 0;
+	bottom: 0;
+	width: 280px;
+	z-index: 100;
+	padding: 2rem 1.75rem;
+	background: var(--paper);
+	border-right: 1.5px solid var(--ink);
+	overflow-y: auto;
+	transform: translateX(-100%);
+	transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+	box-shadow: 6px 0 0 var(--ink);
+}
+
+.sidebar.sidebar-open {
+	transform: translateX(0);
+}
+
+.sidebar::before {
+	content: '';
+	position: absolute;
+	top: 0;
+	right: 4px;
+	bottom: 0;
+	width: 1px;
+	background: var(--ink);
 }
 
 .sidebar-masthead {
@@ -643,69 +718,6 @@ main.withNavigation {
 
 .logout-button:hover {
 	color: var(--ink);
-}
-
-/* =========================================================================
-   BOTTOM NAV (mobile)
-   ========================================================================= */
-
-.bottom-nav {
-	position: fixed;
-	bottom: 0.875rem;
-	left: 0.875rem;
-	right: 0.875rem;
-	display: flex;
-	justify-content: space-between;
-	align-items: center;
-	padding: 0.4rem;
-	background: var(--paper);
-	border: 1px solid var(--ink);
-	box-shadow: 4px 4px 0 var(--ink);
-	z-index: 50;
-}
-
-.bottom-nav a {
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	justify-content: center;
-	gap: 0.15rem;
-	padding: 0.55rem 0.35rem;
-	color: var(--ink-soft);
-	font-family: var(--font-mono);
-	font-size: 0.55rem;
-	letter-spacing: 0.12em;
-	font-weight: 500;
-	text-transform: uppercase;
-	flex: 1;
-	position: relative;
-	transition: color 0.2s;
-}
-
-.bottom-nav a svg {
-	width: 1.15rem;
-	height: 1.15rem;
-	stroke-width: 1.5;
-	transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.bottom-nav a.active {
-	color: var(--ink);
-}
-
-.bottom-nav a.active::before {
-	content: '';
-	position: absolute;
-	top: 0;
-	left: 20%;
-	right: 20%;
-	height: 2px;
-	background: var(--oxblood);
-}
-
-.bottom-nav a.active svg {
-	transform: translateY(-1px);
-	stroke-width: 2;
 }
 
 /* =========================================================================
@@ -1693,28 +1705,22 @@ td.mono {
 		flex-direction: row;
 	}
 
-	.sidebar {
-		display: flex;
-		flex-direction: column;
-		width: 280px;
-		flex-shrink: 0;
-		padding: 2rem 1.75rem;
-		background: var(--paper);
-		border-right: 1.5px solid var(--ink);
-		position: sticky;
-		top: 0;
-		height: 100dvh;
-		overflow-y: auto;
+	.sidebar-toggle {
+		display: none;
 	}
 
-	.sidebar::before {
-		content: '';
-		position: absolute;
+	.sidebar-backdrop {
+		display: none;
+	}
+
+	.sidebar {
+		position: sticky;
 		top: 0;
-		right: 4px;
-		bottom: 0;
-		width: 1px;
-		background: var(--ink);
+		transform: none;
+		box-shadow: none;
+		height: 100dvh;
+		flex-shrink: 0;
+		transition: none;
 	}
 
 	main {
