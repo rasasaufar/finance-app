@@ -360,11 +360,11 @@
 			<p class="section-lede">
 				Setiap kategori diukur terhadap batas yang sudah ditetapkan.
 			</p>
-			{#if summary.budget_usage.length === 0}
+			{#if summary.budget_usage.filter(u => u.category !== 'Makan' && u.category !== 'Bensin').length === 0}
 				<p class="muted">Belum ada aturan budget tambahan.</p>
 			{:else}
 				<div class="usage-list">
-					{#each summary.budget_usage as usage, i}
+					{#each summary.budget_usage.filter(u => u.category !== 'Makan' && u.category !== 'Bensin') as usage, i}
 						<article class="usage-row">
 							<div class="usage-head">
 								<span class="ledger-num">{String(i + 1).padStart(2, '0')}</span>
