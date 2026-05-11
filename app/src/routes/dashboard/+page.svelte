@@ -380,6 +380,10 @@
 							<div class="progress {usage.over_budget ? 'over' : ''}">
 								<span style="width: {budgetPercent(usage.percentage)}%"></span>
 							</div>
+							<div class="progress-label">
+								<span>{Math.round(usage.percentage)}% terpakai</span>
+								<span>Sisa {formatRupiah(usage.remaining)}</span>
+							</div>
 						</article>
 					{/each}
 				</div>

@@ -3,6 +3,7 @@
 	import { api, ApiError } from '$lib/api';
 	import { formatPeriod, formatRupiah, categoryColor } from '$lib/format';
 	import type { MonthlyReport } from '$lib/types';
+	import MonthPicker from '$lib/MonthPicker.svelte';
 
 	let loading = $state(true);
 	let errorMessage = $state('');
@@ -73,10 +74,11 @@
 
 	<section class="section-card report-picker">
 		<div class="picker-row">
-			<label class="field">
-				<span>Pilih Bulan Laporan</span>
-				<input type="month" bind:value={month} />
-			</label>
+			<MonthPicker
+				bind:value={month}
+				label="Pilih Bulan Laporan"
+				onchange={loadReport}
+			/>
 			<button class="button-primary" type="button" onclick={loadReport}>
 				Terbitkan Laporan
 			</button>
