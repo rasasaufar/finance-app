@@ -12,6 +12,21 @@
 	let errorMessage = $state('');
 	let successMessage = $state('');
 
+	// Confirm modal state
+	let confirmModal = $state<{
+		open: boolean;
+		type: 'add' | 'delete';
+		categoryName: string;
+		categoryId: number | null;
+		pendingName: string;
+	}>({
+		open: false,
+		type: 'add',
+		categoryName: '',
+		categoryId: null,
+		pendingName: ''
+	});
+
 	const todayLabel = new Intl.DateTimeFormat('id-ID', {
 		weekday: 'long',
 		day: 'numeric',
@@ -50,7 +65,11 @@
 		name = '';
 	}
 
-	async function handleSubmit(event: SubmitEvent): Promise<void> {
+	function closeModal(): void {
+		confirmModal.open = false;
+	}
+
+	function handleSubmit(event: SubmitEvent): void {
 		event.preventDefault();
 		clearMessages();
 
@@ -60,7 +79,24 @@
 			return;
 		}
 
+		if (editingId) {
+			// Edit langsung tanpa konfirmasi
+			doSave(trimmedName);
+		} else {
+			// Tampilkan konfirmasi tambah
+			confirmModal = {
+				open: true,
+				type: 'add',
+				categoryName: trimmedName,
+				categoryId: null,
+				pendingName: trimmedName
+			};
+		}
+	}
+
+	async function doSave(trimmedName: string): Promise<void> {
 		saving = true;
+		clearMessages();
 		try {
 			if (editingId) {
 				await api.put<Category>(`/categories/${editingId}`, { name: trimmedName });
@@ -83,7 +119,26 @@
 		}
 	}
 
-	async function handleDelete(id: number): Promise<void> {
+	function requestDelete(category: Category): void {
+		confirmModal = {
+			open: true,
+			type: 'delete',
+			categoryName: category.name,
+			categoryId: category.id,
+			pendingName: ''
+		};
+	}
+
+	async function confirmAction(): Promise<void> {
+		closeModal();
+		if (confirmModal.type === 'add') {
+			await doSave(confirmModal.pendingName);
+		} else if (confirmModal.type === 'delete' && confirmModal.categoryId !== null) {
+			await doDelete(confirmModal.categoryId);
+		}
+	}
+
+	async function doDelete(id: number): Promise<void> {
 		clearMessages();
 		try {
 			await api.delete<void>(`/categories/${id}`);
@@ -176,7 +231,7 @@
 							<button
 								class="button-ghost danger"
 								type="button"
-								onclick={() => handleDelete(category.id)}>Hapus</button
+								onclick={() => requestDelete(category)}>Hapus</button
 							>
 						</div>
 					</li>
@@ -185,6 +240,36 @@
 		{/if}
 	</section>
 </section>
+
+{#if confirmModal.open}
+	<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+	<div class="modal-backdrop" onclick={closeModal}>
+		<div class="modal-box" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+			{#if confirmModal.type === 'delete'}
+				<p class="modal-icon">⚠</p>
+				<h3 class="modal-title">Hapus Kategori?</h3>
+				<p class="modal-body">
+					Kategori <strong>"{confirmModal.categoryName}"</strong> akan dihapus secara permanen.
+					Tindakan ini tidak dapat dibatalkan.
+				</p>
+				<div class="modal-actions">
+					<button class="button-secondary" type="button" onclick={closeModal}>Batal</button>
+					<button class="button-danger" type="button" onclick={confirmAction}>Ya, Hapus</button>
+				</div>
+			{:else}
+				<p class="modal-icon">✦</p>
+				<h3 class="modal-title">Tambah Kategori?</h3>
+				<p class="modal-body">
+					Kategori baru <strong>"{confirmModal.categoryName}"</strong> akan ditambahkan ke daftar.
+				</p>
+				<div class="modal-actions">
+					<button class="button-secondary" type="button" onclick={closeModal}>Batal</button>
+					<button class="button-primary" type="button" onclick={confirmAction}>Ya, Tambah</button>
+				</div>
+			{/if}
+		</div>
+	</div>
+{/if}
 
 <style>
 	.cat-list {
@@ -246,5 +331,81 @@
 	.button-ghost.danger:hover {
 		color: var(--ink);
 		border-bottom-color: var(--ink);
+	}
+
+	/* ── Confirm Modal ── */
+	.modal-backdrop {
+		position: fixed;
+		inset: 0;
+		background: rgba(0, 0, 0, 0.65);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		z-index: 200;
+		padding: 1.5rem;
+		backdrop-filter: blur(2px);
+	}
+
+	.modal-box {
+		background: var(--paper);
+		border: 1px solid var(--rule);
+		padding: 2rem 1.75rem 1.75rem;
+		max-width: 22rem;
+		width: 100%;
+		text-align: center;
+	}
+
+	.modal-icon {
+		font-size: 1.75rem;
+		margin: 0 0 0.75rem;
+		color: var(--ochre);
+		line-height: 1;
+	}
+
+	.modal-title {
+		font-family: var(--font-display);
+		font-size: 1.35rem;
+		color: var(--ink);
+		margin: 0 0 0.6rem;
+	}
+
+	.modal-body {
+		font-size: 0.875rem;
+		color: var(--ink-muted);
+		line-height: 1.55;
+		margin: 0 0 1.5rem;
+	}
+
+	.modal-body strong {
+		color: var(--ink);
+	}
+
+	.modal-actions {
+		display: flex;
+		gap: 0.75rem;
+		justify-content: center;
+	}
+
+	.modal-actions .button-secondary,
+	.modal-actions .button-primary,
+	.modal-actions .button-danger {
+		flex: 1;
+	}
+
+	.button-danger {
+		background: var(--oxblood);
+		color: var(--paper);
+		border: 1px solid var(--oxblood);
+		padding: 0.6rem 1.25rem;
+		font-family: var(--font-mono);
+		font-size: 0.75rem;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		cursor: pointer;
+		transition: opacity 0.15s;
+	}
+
+	.button-danger:hover {
+		opacity: 0.85;
 	}
 </style>
