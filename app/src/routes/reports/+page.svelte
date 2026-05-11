@@ -34,6 +34,46 @@
 			: 0
 	);
 
+	// Donut chart helpers
+	const DONUT_R = 80;
+	const DONUT_CX = 110;
+	const DONUT_CY = 110;
+	const DONUT_STROKE = 28;
+	const DONUT_CIRCUMFERENCE = 2 * Math.PI * DONUT_R;
+
+	interface DonutSlice {
+		category: string;
+		total: number;
+		color: string;
+		percent: number;
+		offset: number;
+		dash: number;
+	}
+
+	const donutSlices = $derived((): DonutSlice[] => {
+		if (!report || report.spending_by_category.length === 0) return [];
+		const totalExp = report.spending_by_category.reduce((s, c) => s + c.total, 0);
+		if (totalExp === 0) return [];
+		let cumulative = 0;
+		return report.spending_by_category.map((item) => {
+			const percent = item.total / totalExp;
+			const dash = percent * DONUT_CIRCUMFERENCE;
+			// offset: start from top (rotate -90deg via offset trick)
+			const offset = DONUT_CIRCUMFERENCE - cumulative * DONUT_CIRCUMFERENCE;
+			cumulative += percent;
+			return {
+				category: item.category,
+				total: item.total,
+				color: categoryColor(item.category),
+				percent,
+				offset,
+				dash
+			};
+		});
+	});
+
+	let hoveredSlice = $state<DonutSlice | null>(null);
+
 	async function loadReport(): Promise<void> {
 		loading = true;
 		errorMessage = '';
@@ -123,6 +163,100 @@
 			{#if report.spending_by_category.length === 0}
 				<p class="muted">Belum ada pengeluaran pada bulan ini.</p>
 			{:else}
+				<!-- Donut chart -->
+				<div class="donut-wrap">
+					<svg
+						class="donut-svg"
+						viewBox="0 0 220 220"
+						role="img"
+						aria-label="Grafik pengeluaran per kategori"
+					>
+						<!-- Background ring -->
+						<circle
+							cx={DONUT_CX}
+							cy={DONUT_CY}
+							r={DONUT_R}
+							fill="none"
+							stroke="var(--paper-fold)"
+							stroke-width={DONUT_STROKE}
+						/>
+						{#each donutSlices() as slice}
+							<circle
+								cx={DONUT_CX}
+								cy={DONUT_CY}
+								r={DONUT_R}
+								fill="none"
+								stroke={slice.color}
+								stroke-width={hoveredSlice?.category === slice.category
+									? DONUT_STROKE + 6
+									: DONUT_STROKE}
+								stroke-dasharray="{slice.dash} {DONUT_CIRCUMFERENCE - slice.dash}"
+								stroke-dashoffset={slice.offset}
+								stroke-linecap="butt"
+								style="transform-origin: {DONUT_CX}px {DONUT_CY}px; transform: rotate(-90deg); transition: stroke-width 0.2s ease;"
+								role="button"
+								tabindex="0"
+								aria-label="{slice.category}: {formatRupiah(slice.total)} ({Math.round(slice.percent * 100)}%)"
+								onmouseenter={() => (hoveredSlice = slice)}
+								onmouseleave={() => (hoveredSlice = null)}
+								onfocus={() => (hoveredSlice = slice)}
+								onblur={() => (hoveredSlice = null)}
+							/>
+						{/each}
+						<!-- Center label -->
+						{#if hoveredSlice}
+							<text
+								x={DONUT_CX}
+								y={DONUT_CY - 12}
+								text-anchor="middle"
+								class="donut-label-cat"
+							>{hoveredSlice.category}</text>
+							<text
+								x={DONUT_CX}
+								y={DONUT_CY + 8}
+								text-anchor="middle"
+								class="donut-label-amount"
+							>{formatRupiah(hoveredSlice.total)}</text>
+							<text
+								x={DONUT_CX}
+								y={DONUT_CY + 26}
+								text-anchor="middle"
+								class="donut-label-pct"
+							>{Math.round(hoveredSlice.percent * 100)}%</text>
+						{:else}
+							<text
+								x={DONUT_CX}
+								y={DONUT_CY - 6}
+								text-anchor="middle"
+								class="donut-label-total-hint"
+							>Total</text>
+							<text
+								x={DONUT_CX}
+								y={DONUT_CY + 14}
+								text-anchor="middle"
+								class="donut-label-total"
+							>{formatRupiah(report.total_expense)}</text>
+						{/if}
+					</svg>
+
+					<!-- Legend -->
+					<ul class="donut-legend">
+						{#each donutSlices() as slice}
+							<li
+								class="donut-legend-item"
+								class:active={hoveredSlice?.category === slice.category}
+								onmouseenter={() => (hoveredSlice = slice)}
+								onmouseleave={() => (hoveredSlice = null)}
+							>
+								<span class="legend-dot" style="background:{slice.color};"></span>
+								<span class="legend-cat">{slice.category}</span>
+								<span class="legend-pct mono">{Math.round(slice.percent * 100)}%</span>
+							</li>
+						{/each}
+					</ul>
+				</div>
+
+				<!-- Bar chart ranking -->
 				<ol class="cat-chart">
 					{#each report.spending_by_category as item, i}
 						{@const share =
@@ -232,6 +366,125 @@
 
 	.hero-piece[data-kind='net'] .hero-num[data-positive='false'] {
 		color: var(--oxblood);
+	}
+
+	/* Donut chart */
+	.donut-wrap {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 1.25rem;
+		padding: 1rem 0 1.25rem;
+		border-top: 1px solid var(--rule);
+	}
+
+	.donut-svg {
+		width: 220px;
+		height: 220px;
+		flex-shrink: 0;
+		overflow: visible;
+	}
+
+	.donut-svg circle[role='button'] {
+		cursor: pointer;
+		outline: none;
+	}
+
+	.donut-label-cat {
+		font-size: 11px;
+		font-weight: 700;
+		fill: var(--ink);
+		font-family: var(--font-sans, sans-serif);
+		letter-spacing: 0.03em;
+	}
+
+	.donut-label-amount {
+		font-size: 10px;
+		fill: var(--ink);
+		font-family: var(--font-mono, monospace);
+	}
+
+	.donut-label-pct {
+		font-size: 9px;
+		fill: var(--muted, #888);
+		font-family: var(--font-mono, monospace);
+		letter-spacing: 0.08em;
+	}
+
+	.donut-label-total-hint {
+		font-size: 9px;
+		fill: var(--muted, #888);
+		font-family: var(--font-mono, monospace);
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+	}
+
+	.donut-label-total {
+		font-size: 11px;
+		font-weight: 700;
+		fill: var(--ink);
+		font-family: var(--font-mono, monospace);
+	}
+
+	.donut-legend {
+		list-style: none;
+		padding: 0;
+		margin: 0;
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 0.4rem 1rem;
+		width: 100%;
+		max-width: 320px;
+	}
+
+	.donut-legend-item {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+		cursor: pointer;
+		padding: 0.2rem 0.3rem;
+		border-radius: 3px;
+		transition: background 0.15s;
+	}
+
+	.donut-legend-item.active,
+	.donut-legend-item:hover {
+		background: var(--paper-fold);
+	}
+
+	.legend-dot {
+		width: 10px;
+		height: 10px;
+		border-radius: 2px;
+		flex-shrink: 0;
+	}
+
+	.legend-cat {
+		font-size: 0.72rem;
+		font-weight: 600;
+		color: var(--ink);
+		flex: 1;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.legend-pct {
+		font-size: 0.65rem;
+		color: var(--muted, #888);
+	}
+
+	@media (min-width: 480px) {
+		.donut-wrap {
+			flex-direction: row;
+			align-items: center;
+			justify-content: center;
+		}
+
+		.donut-legend {
+			grid-template-columns: 1fr;
+			max-width: 180px;
+		}
 	}
 
 	/* Category chart */
