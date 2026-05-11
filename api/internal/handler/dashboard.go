@@ -225,7 +225,10 @@ func (h *Handler) HandleMonthlyReport(w http.ResponseWriter, r *http.Request) {
 
 	var totalIncome int64
 	var totalExpense int64
+	// key: lowercase category name → total expense for the month
 	byCategoryMap := map[string]int64{}
+	// key: lowercase category name → original display name
+	categoryDisplayName := map[string]string{}
 
 	for _, trx := range transactions {
 		if trx.Date.Format(types.MonthLayout) != month {
@@ -238,25 +241,48 @@ func (h *Handler) HandleMonthlyReport(w http.ResponseWriter, r *http.Request) {
 		}
 
 		totalExpense += trx.Amount
-		byCategoryMap[trx.Category] += trx.Amount
+		key := strings.ToLower(strings.TrimSpace(trx.Category))
+		byCategoryMap[key] += trx.Amount
+		if _, exists := categoryDisplayName[key]; !exists {
+			categoryDisplayName[key] = strings.TrimSpace(trx.Category)
+		}
 	}
 
 	spendingByCategory := make([]types.CategorySpending, 0, len(byCategoryMap))
-	for category, total := range byCategoryMap {
-		spendingByCategory = append(spendingByCategory, types.CategorySpending{Category: category, Total: total})
+	for key, total := range byCategoryMap {
+		name := categoryDisplayName[key]
+		if name == "" {
+			name = key
+		}
+		spendingByCategory = append(spendingByCategory, types.CategorySpending{Category: name, Total: total})
 	}
 	sort.Slice(spendingByCategory, func(i, j int) bool {
 		return spendingByCategory[i].Total > spendingByCategory[j].Total
 	})
 
+	daysInRef := int64(daysInMonth(reference))
+
 	budgetUsage := make([]types.BudgetCheck, 0, len(rules))
 	for _, rule := range rules {
-		used, err := h.Store.SumExpenseForRule(r.Context(), rule.CategoryID, rule.Period, reference, 0)
-		if err != nil {
-			httputil.WriteInternalServerError(w, err)
-			return
+		var used int64
+		effectiveLimit := rule.Limit
+
+		if rule.Period == "monthly" {
+			// For monthly rules, query the DB directly (already sums the whole month)
+			used, err = h.Store.SumExpenseForRule(r.Context(), rule.CategoryID, rule.Period, reference, 0)
+			if err != nil {
+				httputil.WriteInternalServerError(w, err)
+				return
+			}
+		} else {
+			// For daily/weekly rules in a monthly report, sum all expenses in the month
+			used = byCategoryMap[strings.ToLower(strings.TrimSpace(rule.Category))]
+			if rule.Period == "daily" {
+				// Scale daily limit to the full month
+				effectiveLimit = rule.Limit * daysInRef
+			}
 		}
-		budgetUsage = append(budgetUsage, store.BuildBudgetCheck(rule.Category, rule.Period, rule.Limit, used))
+		budgetUsage = append(budgetUsage, store.BuildBudgetCheck(rule.Category, rule.Period, effectiveLimit, used))
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, types.MonthlyReportResponse{
