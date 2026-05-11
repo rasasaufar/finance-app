@@ -9,6 +9,7 @@
 		TransactionMutationResponse,
 		TransactionType
 	} from '$lib/types';
+	import DatePicker from '$lib/DatePicker.svelte';
 
 	interface TransactionDraft {
 		type: TransactionType;
@@ -39,16 +40,6 @@
 	let filterType = $state<'all' | TransactionType>('all');
 	let filterCategory = $state('');
 
-	// FAB and form section reference
-	let formSection: HTMLElement | null = $state(null);
-
-	function scrollToForm(): void {
-		if (formSection) {
-			formSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-			const firstInput = formSection.querySelector<HTMLElement>('select, input');
-			firstInput?.focus({ preventScroll: true });
-		}
-	}
 
 	const todayLabel = new Intl.DateTimeFormat('id-ID', {
 		weekday: 'long',
@@ -320,7 +311,7 @@
 		</div>
 	</div>
 
-	<section class="section-card" bind:this={formSection}>
+	<section class="section-card">
 		<h2 class="section-title">Catat Transaksi Baru</h2>
 		<p class="section-lede">
 			Isi kolom-kolom di bawah, lalu konfirmasi sebelum masuk ke buku kas.
@@ -370,10 +361,7 @@
 					<span>Nominal</span>
 					<input type="number" bind:value={amount} min="1" placeholder="Contoh: 50000" required />
 				</label>
-				<label class="field">
-					<span>Tanggal</span>
-					<input type="date" bind:value={date} required />
-				</label>
+				<DatePicker bind:value={date} label="Tanggal" required />
 			</div>
 
 			<label class="field">
@@ -491,16 +479,6 @@
 	</section>
 </section>
 
-<!-- Floating quick-add button (mobile-friendly) -->
-<button
-	class="fab"
-	type="button"
-	onclick={scrollToForm}
-	aria-label="Tambah transaksi baru"
->
-	<span class="fab-plus">+</span>
-	<span class="fab-label">Catat</span>
-</button>
 
 {#if showAddConfirmModal && pendingDraft}
 	<div
@@ -848,72 +826,6 @@
 		padding: 0.3rem 1.5rem 0.3rem 0.1rem;
 		font-size: 0.85rem;
 		background-position: right 0 center;
-	}
-
-	/* FAB — floating quick-add */
-	.fab {
-		position: fixed;
-		bottom: 5rem;
-		right: 1rem;
-		z-index: 60;
-		background: var(--ink);
-		color: var(--paper);
-		border: 1.5px solid var(--ink);
-		border-radius: 0;
-		padding: 0.75rem 1rem;
-		font-family: var(--font-body);
-		font-size: 0.85rem;
-		font-weight: 700;
-		letter-spacing: 0.03em;
-		cursor: pointer;
-		display: inline-flex;
-		align-items: center;
-		gap: 0.5rem;
-		box-shadow: 4px 4px 0 var(--oxblood);
-		transition: transform 0.15s, box-shadow 0.15s;
-		animation: fab-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.5s backwards;
-	}
-
-	@keyframes fab-in {
-		from {
-			opacity: 0;
-			transform: translateY(20px) scale(0.9);
-		}
-		to {
-			opacity: 1;
-			transform: none;
-		}
-	}
-
-	.fab:hover {
-		transform: translate(-2px, -2px);
-		box-shadow: 6px 6px 0 var(--oxblood);
-	}
-
-	.fab:active {
-		transform: translate(2px, 2px);
-		box-shadow: 1px 1px 0 var(--oxblood);
-	}
-
-	.fab-plus {
-		font-family: var(--font-display);
-		font-size: 1.4rem;
-		line-height: 1;
-		font-style: italic;
-		color: var(--paper);
-	}
-
-	.fab-label {
-		font-family: var(--font-mono);
-		font-size: 0.65rem;
-		letter-spacing: 0.15em;
-		text-transform: uppercase;
-	}
-
-	@media (min-width: 1024px) {
-		.fab {
-			display: none;
-		}
 	}
 
 	@media (min-width: 640px) {

@@ -3,6 +3,7 @@
 	import { api, ApiError } from '$lib/api';
 	import { formatRupiah } from '$lib/format';
 	import type { DashboardSummary, SalaryMaster } from '$lib/types';
+	import MonthPicker from '$lib/MonthPicker.svelte';
 
 	let loading = $state(true);
 	let saving = $state(false);
@@ -247,10 +248,7 @@
 			</p>
 			<form class="form-grid" onsubmit={handleSubmit}>
 				<div class="form-row">
-					<label class="field">
-						<span>Bulan Gaji</span>
-						<input type="month" bind:value={salaryMonth} required />
-					</label>
+					<MonthPicker bind:value={salaryMonth} label="Bulan Gaji" required />
 					<label class="field">
 						<span>Nominal Gaji (Rp)</span>
 						<input
