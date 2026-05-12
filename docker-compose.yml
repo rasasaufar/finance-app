@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  api:
+    build: ./api
+    container_name: finance-api
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgres://finance_user:finance_pass_2026@host.docker.internal:5432/finance_app?sslmode=disable
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "127.0.0.1:8080:8080"
+    networks:
+      - finance-net
+
+  frontend:
+    build:
+      context: ./app
+      args:
+        PUBLIC_API_BASE_URL: https://dompet.rasasaufar.site/api
+    container_name: finance-frontend
+    restart: unless-stopped
+    environment:
+      - PORT=3003
+      - HOST=0.0.0.0
+    ports:
+      - "127.0.0.1:3003:3003"
+    depends_on:
+      - api
+    networks:
+      - finance-net
+
+networks:
+  finance-net:
+    driver: bridge

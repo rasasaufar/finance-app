@@ -48,6 +48,7 @@ func main() {
 		AllowedOrigins: []string{
 			"http://localhost:5173",
 			"http://localhost:5174",
+			"https://dompet.rasasaufar.site",
 		},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Requested-With"},
