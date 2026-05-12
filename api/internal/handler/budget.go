@@ -6,12 +6,14 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/rasasaufar/finance-app/api/internal/httputil"
+	"github.com/rasasaufar/finance-app/api/internal/middleware"
 	"github.com/rasasaufar/finance-app/api/internal/types"
 	"github.com/rasasaufar/finance-app/api/internal/validate"
 )
 
 func (h *Handler) HandleGetBudgetRules(w http.ResponseWriter, r *http.Request) {
-	rules, err := h.Store.ListBudgetRules(r.Context())
+	accountID := middleware.UserIDFromContext(r.Context())
+	rules, err := h.Store.ListBudgetRules(r.Context(), accountID)
 	if err != nil {
 		httputil.WriteInternalServerError(w, err)
 		return
@@ -44,7 +46,9 @@ func (h *Handler) HandleCreateBudgetRule(w http.ResponseWriter, r *http.Request)
 	}
 
 	ctx := r.Context()
-	category, err := h.Store.FindCategoryByName(ctx, rule.Category)
+	accountID := middleware.UserIDFromContext(ctx)
+
+	category, err := h.Store.FindCategoryByName(ctx, accountID, rule.Category)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			httputil.WriteError(w, http.StatusBadRequest, "kategori tidak ditemukan")
@@ -57,9 +61,10 @@ func (h *Handler) HandleCreateBudgetRule(w http.ResponseWriter, r *http.Request)
 	created := types.BudgetRule{Category: category.Name, Period: rule.Period, Limit: rule.Limit}
 	err = h.Store.DB.QueryRow(
 		ctx,
-		`INSERT INTO budget_rules (category_id, period, limit_amount)
-		 VALUES ($1, $2, $3)
+		`INSERT INTO budget_rules (account_id, category_id, period, limit_amount)
+		 VALUES ($1, $2, $3, $4)
 		 RETURNING id`,
+		accountID,
 		category.ID,
 		rule.Period,
 		rule.Limit,
@@ -96,7 +101,9 @@ func (h *Handler) HandleUpdateBudgetRule(w http.ResponseWriter, r *http.Request)
 	}
 
 	ctx := r.Context()
-	category, err := h.Store.FindCategoryByName(ctx, normalized.Category)
+	accountID := middleware.UserIDFromContext(ctx)
+
+	category, err := h.Store.FindCategoryByName(ctx, accountID, normalized.Category)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			httputil.WriteError(w, http.StatusBadRequest, "kategori tidak ditemukan")
@@ -113,12 +120,13 @@ func (h *Handler) HandleUpdateBudgetRule(w http.ResponseWriter, r *http.Request)
 		 SET category_id = $1,
 		     period = $2,
 		     limit_amount = $3
-		 WHERE id = $4
+		 WHERE id = $4 AND account_id = $5
 		 RETURNING id`,
 		category.ID,
 		normalized.Period,
 		normalized.Limit,
 		id,
+		accountID,
 	).Scan(&updated.ID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -143,7 +151,10 @@ func (h *Handler) HandleDeleteBudgetRule(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	result, err := h.Store.DB.Exec(r.Context(), `DELETE FROM budget_rules WHERE id = $1`, id)
+	accountID := middleware.UserIDFromContext(r.Context())
+	result, err := h.Store.DB.Exec(r.Context(),
+		`DELETE FROM budget_rules WHERE id = $1 AND account_id = $2`,
+		id, accountID)
 	if err != nil {
 		httputil.WriteInternalServerError(w, err)
 		return

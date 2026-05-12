@@ -55,7 +55,7 @@ func main() {
 		AllowCredentials: true,
 	}))
 
-	// Serve uploaded avatar images from <exe_dir>/uploads at /images/
+	// Serve uploaded avatar images
 	uploadsDir := handler.AvatarUploadDir()
 	if err := os.MkdirAll(uploadsDir, 0755); err != nil {
 		log.Printf("warning: gagal buat folder uploads: %v", err)
@@ -70,8 +70,11 @@ func main() {
 
 	r.Post("/auth/login", h.HandleLogin)
 
+	// Auth middleware (injects userID + role into context)
+	authMiddleware := middleware.Auth(st)
+
 	r.Group(func(pr chi.Router) {
-		pr.Use(middleware.Auth)
+		pr.Use(authMiddleware)
 
 		pr.Get("/me", h.HandleMe)
 		pr.Put("/me", h.HandleUpdateMe)
@@ -101,6 +104,16 @@ func main() {
 		pr.Delete("/salary-masters/{id}", h.HandleDeleteSalaryMaster)
 
 		pr.Get("/reports/monthly", h.HandleMonthlyReport)
+
+		// Admin-only routes
+		pr.Group(func(ar chi.Router) {
+			ar.Use(middleware.AdminOnly)
+
+			ar.Get("/admin/accounts", h.HandleListAccounts)
+			ar.Post("/admin/accounts", h.HandleCreateAccount)
+			ar.Put("/admin/accounts/{id}", h.HandleUpdateAccount)
+			ar.Delete("/admin/accounts/{id}", h.HandleDeleteAccount)
+		})
 	})
 
 	log.Printf("API running on http://localhost:8080 (postgres connected)")

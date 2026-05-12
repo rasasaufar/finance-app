@@ -9,6 +9,7 @@ export const load: LayoutLoad = ({ url }) => {
 	const pathname = url.pathname;
 	const isLoginPage = pathname === '/login';
 	const token = browser ? localStorage.getItem('finance_token') : null;
+	const role = browser ? (localStorage.getItem('finance_role') ?? '') : '';
 	const isLoggedIn = Boolean(token);
 
 	if (!isLoggedIn && !isLoginPage) {
@@ -19,7 +20,13 @@ export const load: LayoutLoad = ({ url }) => {
 		throw redirect(302, '/dashboard');
 	}
 
+	// Guard admin routes
+	if (isLoggedIn && pathname.startsWith('/admin') && role !== 'admin') {
+		throw redirect(302, '/dashboard');
+	}
+
 	return {
-		isLoggedIn
+		isLoggedIn,
+		role
 	};
 };

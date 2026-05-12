@@ -8,12 +8,14 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/rasasaufar/finance-app/api/internal/httputil"
+	"github.com/rasasaufar/finance-app/api/internal/middleware"
 	"github.com/rasasaufar/finance-app/api/internal/types"
 	"github.com/rasasaufar/finance-app/api/internal/validate"
 )
 
 func (h *Handler) HandleGetTransactions(w http.ResponseWriter, r *http.Request) {
-	items, err := h.Store.ListTransactions(r.Context())
+	accountID := middleware.UserIDFromContext(r.Context())
+	items, err := h.Store.ListTransactions(r.Context(), accountID)
 	if err != nil {
 		httputil.WriteInternalServerError(w, err)
 		return
@@ -48,7 +50,9 @@ func (h *Handler) HandleCreateTransaction(w http.ResponseWriter, r *http.Request
 	}
 
 	ctx := r.Context()
-	category, err := h.Store.FindCategoryByName(ctx, trx.Category)
+	accountID := middleware.UserIDFromContext(ctx)
+
+	category, err := h.Store.FindCategoryByName(ctx, accountID, trx.Category)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			httputil.WriteError(w, http.StatusBadRequest, "kategori tidak ditemukan")
@@ -59,7 +63,7 @@ func (h *Handler) HandleCreateTransaction(w http.ResponseWriter, r *http.Request
 	}
 
 	trxDate, _ := time.Parse(types.DateLayout, trx.Date)
-	checks, err := h.Store.CheckBudgetForTransaction(ctx, category.ID, trx.Type, trxDate, trx.Amount, 0)
+	checks, err := h.Store.CheckBudgetForTransaction(ctx, accountID, category.ID, trx.Type, trxDate, trx.Amount, 0)
 	if err != nil {
 		httputil.WriteInternalServerError(w, err)
 		return
@@ -68,9 +72,10 @@ func (h *Handler) HandleCreateTransaction(w http.ResponseWriter, r *http.Request
 	var id int64
 	err = h.Store.DB.QueryRow(
 		ctx,
-		`INSERT INTO transactions (type, category_id, amount, trx_date, note)
-		 VALUES ($1, $2, $3, $4, $5)
+		`INSERT INTO transactions (account_id, type, category_id, amount, trx_date, note)
+		 VALUES ($1, $2, $3, $4, $5, $6)
 		 RETURNING id`,
+		accountID,
 		trx.Type,
 		category.ID,
 		trx.Amount,
@@ -118,7 +123,9 @@ func (h *Handler) HandleUpdateTransaction(w http.ResponseWriter, r *http.Request
 	}
 
 	ctx := r.Context()
-	category, err := h.Store.FindCategoryByName(ctx, normalized.Category)
+	accountID := middleware.UserIDFromContext(ctx)
+
+	category, err := h.Store.FindCategoryByName(ctx, accountID, normalized.Category)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			httputil.WriteError(w, http.StatusBadRequest, "kategori tidak ditemukan")
@@ -129,7 +136,7 @@ func (h *Handler) HandleUpdateTransaction(w http.ResponseWriter, r *http.Request
 	}
 
 	trxDate, _ := time.Parse(types.DateLayout, normalized.Date)
-	checks, err := h.Store.CheckBudgetForTransaction(ctx, category.ID, normalized.Type, trxDate, normalized.Amount, id)
+	checks, err := h.Store.CheckBudgetForTransaction(ctx, accountID, category.ID, normalized.Type, trxDate, normalized.Amount, id)
 	if err != nil {
 		httputil.WriteInternalServerError(w, err)
 		return
@@ -145,7 +152,7 @@ func (h *Handler) HandleUpdateTransaction(w http.ResponseWriter, r *http.Request
 		     trx_date = $4,
 		     note = $5,
 		     updated_at = NOW()
-		 WHERE id = $6
+		 WHERE id = $6 AND account_id = $7
 		 RETURNING id`,
 		normalized.Type,
 		category.ID,
@@ -153,6 +160,7 @@ func (h *Handler) HandleUpdateTransaction(w http.ResponseWriter, r *http.Request
 		trxDate,
 		normalized.Note,
 		id,
+		accountID,
 	).Scan(&updatedID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -186,7 +194,10 @@ func (h *Handler) HandleDeleteTransaction(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	result, err := h.Store.DB.Exec(r.Context(), `DELETE FROM transactions WHERE id = $1`, id)
+	accountID := middleware.UserIDFromContext(r.Context())
+	result, err := h.Store.DB.Exec(r.Context(),
+		`DELETE FROM transactions WHERE id = $1 AND account_id = $2`,
+		id, accountID)
 	if err != nil {
 		httputil.WriteInternalServerError(w, err)
 		return
