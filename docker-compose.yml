@@ -11,6 +11,8 @@ services:
       - "host.docker.internal:host-gateway"
     ports:
       - "127.0.0.1:8080:8080"
+    volumes:
+      - finance-uploads:/app/uploads
     networks:
       - finance-net
 
@@ -34,3 +36,6 @@ services:
 networks:
   finance-net:
     driver: bridge
+
+volumes:
+  finance-uploads:
