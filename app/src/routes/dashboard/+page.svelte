@@ -157,7 +157,7 @@
 			<div>
 				<h1 class="page-title">Ringkasan <em>Hari&nbsp;Ini</em></h1>
 				<p class="page-subtitle">
-					ppPotret cepat saldo, pengeluaran, dan pemakaian budget untuk menjaga irama keuangan.
+					Potret cepat saldo, pengeluaran, dan pemakaian budget untuk menjaga irama keuangan.
 				</p>
 			</div>
 			<button class="button-secondary" type="button" onclick={loadSummary}>↻ Segarkan</button>
