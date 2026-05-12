@@ -1,6 +1,4 @@
-// ⚠️ DEPLOYMENT: Harus pakai adapter-node (self-hosted di VPS Docker)
-// JANGAN ganti ke adapter-cloudflare — Dockerfile expect output di build/
-import adapter from '@sveltejs/adapter-node';
+import adapter from '@sveltejs/adapter-cloudflare';
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
