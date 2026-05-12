@@ -1,7 +1,7 @@
 <script lang="ts">
 	import './layout.css';
 	import favicon from '$lib/assets/favicon.svg';
-	import { clearAuthToken, getAuthToken } from '$lib/auth';
+	import { clearAuthToken, getAuthToken, getAuthEmail, getAuthName, setAuthEmail, setAuthName } from '$lib/auth';
 	import { api, apiBaseUrl } from '$lib/api';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
@@ -12,8 +12,10 @@
 
 	let { children, data } = $props<{
 		children: import('svelte').Snippet;
-		data: { isLoggedIn: boolean };
+		data: { isLoggedIn: boolean; role: string };
 	}>();
+
+	const isAdmin = $derived(data.role === 'admin');
 
 	const navItems = [
 		{
@@ -117,7 +119,7 @@
 		]
 	};
 
-	const AVATAR_KEY = 'finance_avatar_path';
+	// Avatar key is scoped per account email to avoid cross-account leakage
 
 	const currentPath = $derived(page.url.pathname);
 	const currentActions = $derived(sidebarActions[currentPath] ?? []);
@@ -181,11 +183,16 @@
 		sidebarOpen = false;
 	}
 
-	let username = $state('Rasa Saufar');
-	let userEmail = $state('rasas@example.com');
+	let username = $state(getAuthName() ?? '');
+	let userEmail = $state(getAuthEmail() ?? '');
 
 	// Saved avatar path — persisted in localStorage
 	let avatarDataUrl = $state<string | null>(null);
+
+	// Avatar key scoped per email — computed lazily when email is known
+	function getAvatarKey(email: string): string {
+		return `finance_avatar_path_${email || 'default'}`;
+	}
 
 	// Edit form state
 	let editUsername = $state('');
@@ -229,7 +236,7 @@
 
 	function loadAvatarFromStorage(): void {
 		try {
-			const stored = localStorage.getItem(AVATAR_KEY);
+			const stored = localStorage.getItem(getAvatarKey(userEmail));
 			avatarDataUrl = stored ?? null;
 		} catch {
 			// ignore
@@ -245,10 +252,11 @@
 
 	function saveAvatarToStorage(path: string | null): void {
 		try {
+			const key = getAvatarKey(userEmail);
 			if (path) {
-				localStorage.setItem(AVATAR_KEY, path);
+				localStorage.setItem(key, path);
 			} else {
-				localStorage.removeItem(AVATAR_KEY);
+				localStorage.removeItem(key);
 			}
 		} catch {
 			// ignore
@@ -341,6 +349,9 @@
 			username = updated.name;
 			userEmail = updated.email;
 			editPassword = '';
+			// Keep localStorage in sync
+			setAuthName(updated.name);
+			setAuthEmail(updated.email);
 
 			// 3. Commit avatar changes setelah profile berhasil disimpan
 			if (editAvatarRemoved) {
@@ -384,20 +395,38 @@
 			userEmail = me.email;
 			editUsername = me.name;
 			editEmail = me.email;
+			// Keep localStorage in sync so initial render is always correct
+			setAuthName(me.name);
+			setAuthEmail(me.email);
+			// Load avatar after we know the email (key is scoped per email)
+			loadAvatarFromStorage();
 		} catch {
 			// Biarkan UX tetap lanjut walau profile gagal dimuat sementara.
+			loadAvatarFromStorage();
 		}
 	}
 
 	async function handleLogout(): Promise<void> {
+		// Clear legacy avatar key (no email suffix) to avoid stale data
+		try { localStorage.removeItem('finance_avatar_path'); } catch { /* ignore */ }
 		clearAuthToken();
 		await goto('/login');
 	}
 
 	onMount(() => {
-		loadProfile();
-		loadAvatarFromStorage();
 		loadTheme();
+	});
+
+	// Re-run loadProfile whenever login state changes (e.g. right after login redirect)
+	$effect(() => {
+		if (data.isLoggedIn) {
+			loadProfile();
+		} else {
+			// Reset state on logout
+			username = '';
+			userEmail = '';
+			avatarDataUrl = null;
+		}
 	});
 </script>
 
@@ -452,6 +481,15 @@
 						<span class="nav-arrow">→</span>
 					</a>
 				{/each}
+				{#if isAdmin}
+					<div class="nav-divider"></div>
+					<a class:active={isActive('/admin/accounts')} href="/admin/accounts" onclick={closeSidebar} class="nav-admin">
+						<span class="nav-num">⚙</span>
+						<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+						<span>Kelola Akun</span>
+						<span class="nav-arrow">→</span>
+					</a>
+				{/if}
 			</nav>
 
 			<div class="sidebar-bottom">
@@ -503,8 +541,8 @@
 							{/if}
 						</div>
 						<div class="profile-info">
-							<p class="profile-name">{username}</p>
-							<p class="profile-role">Pemilik Buku Kas</p>
+							<p class="profile-name">{username || '…'}</p>
+							<p class="profile-role">{isAdmin ? 'Admin' : 'Pemilik Buku Kas'}</p>
 						</div>
 					</button>
 
@@ -639,6 +677,22 @@
 		object-fit: cover;
 		border-radius: 50%;
 		display: block;
+	}
+
+	.nav-divider {
+		height: 1px;
+		background: var(--ink);
+		opacity: 0.15;
+		margin: 0.35rem 0;
+	}
+
+	:global(.nav-admin) {
+		opacity: 0.75;
+	}
+
+	:global(.nav-admin:hover),
+	:global(.nav-admin.active) {
+		opacity: 1;
 	}
 
 	/* ── Settings modal ── */

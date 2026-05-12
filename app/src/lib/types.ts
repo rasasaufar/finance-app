@@ -4,6 +4,7 @@ export type BudgetPeriod = 'daily' | 'weekly' | 'monthly';
 export interface User {
 	name: string;
 	email: string;
+	role: string;
 }
 
 export interface LoginResponse {
@@ -80,4 +81,11 @@ export interface MonthlyReport {
 	net: number;
 	spending_by_category: MonthlyCategorySpending[];
 	budget_usage: BudgetCheck[];
+}
+
+export interface AccountResponse {
+	id: number;
+	name: string;
+	email: string;
+	role: string;
 }

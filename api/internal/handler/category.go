@@ -7,11 +7,13 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/rasasaufar/finance-app/api/internal/httputil"
+	"github.com/rasasaufar/finance-app/api/internal/middleware"
 	"github.com/rasasaufar/finance-app/api/internal/types"
 )
 
 func (h *Handler) HandleGetCategories(w http.ResponseWriter, r *http.Request) {
-	categories, err := h.Store.ListCategories(r.Context())
+	accountID := middleware.UserIDFromContext(r.Context())
+	categories, err := h.Store.ListCategories(r.Context(), accountID)
 	if err != nil {
 		httputil.WriteInternalServerError(w, err)
 		return
@@ -32,7 +34,10 @@ func (h *Handler) HandleCreateCategory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	exists, err := h.Store.CategoryNameExists(r.Context(), name, 0)
+	ctx := r.Context()
+	accountID := middleware.UserIDFromContext(ctx)
+
+	exists, err := h.Store.CategoryNameExists(ctx, accountID, name, 0)
 	if err != nil {
 		httputil.WriteInternalServerError(w, err)
 		return
@@ -44,9 +49,9 @@ func (h *Handler) HandleCreateCategory(w http.ResponseWriter, r *http.Request) {
 
 	category := types.Category{}
 	err = h.Store.DB.QueryRow(
-		r.Context(),
-		`INSERT INTO categories (name) VALUES ($1) RETURNING id, name`,
-		name,
+		ctx,
+		`INSERT INTO categories (account_id, name) VALUES ($1, $2) RETURNING id, name`,
+		accountID, name,
 	).Scan(&category.ID, &category.Name)
 	if err != nil {
 		if isUniqueViolation(err) {
@@ -79,7 +84,10 @@ func (h *Handler) HandleUpdateCategory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	exists, err := h.Store.CategoryNameExists(r.Context(), name, id)
+	ctx := r.Context()
+	accountID := middleware.UserIDFromContext(ctx)
+
+	exists, err := h.Store.CategoryNameExists(ctx, accountID, name, id)
 	if err != nil {
 		httputil.WriteInternalServerError(w, err)
 		return
@@ -91,10 +99,9 @@ func (h *Handler) HandleUpdateCategory(w http.ResponseWriter, r *http.Request) {
 
 	category := types.Category{}
 	err = h.Store.DB.QueryRow(
-		r.Context(),
-		`UPDATE categories SET name = $1 WHERE id = $2 RETURNING id, name`,
-		name,
-		id,
+		ctx,
+		`UPDATE categories SET name = $1 WHERE id = $2 AND account_id = $3 RETURNING id, name`,
+		name, id, accountID,
 	).Scan(&category.ID, &category.Name)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -120,7 +127,9 @@ func (h *Handler) HandleDeleteCategory(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	category, err := h.Store.FindCategoryByID(ctx, id)
+	accountID := middleware.UserIDFromContext(ctx)
+
+	category, err := h.Store.FindCategoryByID(ctx, accountID, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			httputil.WriteError(w, http.StatusNotFound, "kategori tidak ditemukan")
@@ -131,7 +140,9 @@ func (h *Handler) HandleDeleteCategory(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var usageCount int64
-	err = h.Store.DB.QueryRow(ctx, `SELECT COUNT(*) FROM transactions WHERE category_id = $1`, id).Scan(&usageCount)
+	err = h.Store.DB.QueryRow(ctx,
+		`SELECT COUNT(*) FROM transactions WHERE category_id = $1 AND account_id = $2`,
+		id, accountID).Scan(&usageCount)
 	if err != nil {
 		httputil.WriteInternalServerError(w, err)
 		return
@@ -141,7 +152,9 @@ func (h *Handler) HandleDeleteCategory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.Store.DB.Exec(ctx, `DELETE FROM categories WHERE id = $1`, category.ID)
+	result, err := h.Store.DB.Exec(ctx,
+		`DELETE FROM categories WHERE id = $1 AND account_id = $2`,
+		category.ID, accountID)
 	if err != nil {
 		httputil.WriteInternalServerError(w, err)
 		return

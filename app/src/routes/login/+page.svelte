@@ -1,13 +1,14 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { api, ApiError } from '$lib/api';
-	import { setAuthToken } from '$lib/auth';
+	import { setAuthToken, setAuthRole, setAuthEmail, setAuthName } from '$lib/auth';
 	import type { LoginResponse } from '$lib/types';
 
-	let email = $state('rasas@example.com');
-	let password = $state('password123');
+	let email = $state('');
+	let password = $state('');
 	let loading = $state(false);
 	let errorMessage = $state('');
+	let showPassword = $state(false);
 
 	const todayLabel = new Intl.DateTimeFormat('id-ID', {
 		weekday: 'long',
@@ -31,6 +32,9 @@
 				false
 			);
 			setAuthToken(response.token);
+			setAuthRole(response.user.role);
+			setAuthEmail(response.user.email);
+			setAuthName(response.user.name);
 			await goto('/dashboard');
 		} catch (error) {
 			if (error instanceof ApiError) {
@@ -105,12 +109,35 @@
 
 			<label class="field">
 				<span>Kata Sandi</span>
-				<input
-					type="password"
-					bind:value={password}
-					placeholder="••••••••"
-					required
-				/>
+				<div class="password-wrapper">
+					<input
+						type={showPassword ? 'text' : 'password'}
+						bind:value={password}
+						placeholder="••••••••"
+						required
+					/>
+					<button
+						type="button"
+						class="toggle-password"
+						onclick={() => (showPassword = !showPassword)}
+						aria-label={showPassword ? 'Sembunyikan kata sandi' : 'Tampilkan kata sandi'}
+					>
+						{#if showPassword}
+							<!-- eye-off icon -->
+							<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+								<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
+								<path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
+								<line x1="1" y1="1" x2="23" y2="23"/>
+							</svg>
+						{:else}
+							<!-- eye icon -->
+							<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+								<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+								<circle cx="12" cy="12" r="3"/>
+							</svg>
+						{/if}
+					</button>
+				</div>
 			</label>
 
 			<button class="button-primary cover-submit" type="submit" disabled={loading}>
@@ -399,6 +426,36 @@
 		margin-top: 0.5rem;
 		padding: 1rem 1.25rem;
 		font-size: 1rem;
+	}
+
+	.password-wrapper {
+		position: relative;
+		display: flex;
+		align-items: center;
+	}
+
+	.password-wrapper input {
+		width: 100%;
+		padding-right: 2.75rem;
+	}
+
+	.toggle-password {
+		position: absolute;
+		right: 0.6rem;
+		background: none;
+		border: none;
+		padding: 0.25rem;
+		cursor: pointer;
+		color: var(--ink-soft);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		line-height: 1;
+		transition: color 0.15s;
+	}
+
+	.toggle-password:hover {
+		color: var(--ink);
 	}
 
 	.form-fine {

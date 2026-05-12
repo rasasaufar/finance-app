@@ -21,42 +21,30 @@ func New(db *pgxpool.Pool) *Store {
 }
 
 // EnsureSchema creates all required tables and indexes if they don't exist.
+// Also handles migration of existing tables to add account_id column.
 func (s *Store) EnsureSchema(ctx context.Context) error {
 	statements := []string{
-		`CREATE TABLE IF NOT EXISTS categories (
+		// Accounts table (replaces user_profiles for auth purposes)
+		`CREATE TABLE IF NOT EXISTS accounts (
 			id BIGSERIAL PRIMARY KEY,
-			name TEXT NOT NULL UNIQUE,
+			full_name TEXT NOT NULL,
+			email TEXT NOT NULL UNIQUE,
+			password_hash TEXT NOT NULL DEFAULT '',
+			role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('admin', 'user')),
+			avatar_url TEXT NOT NULL DEFAULT '',
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS uq_accounts_lower_email ON accounts ((LOWER(email)))`,
+
+		// Sessions table for token-based auth
+		`CREATE TABLE IF NOT EXISTS sessions (
+			token TEXT PRIMARY KEY,
+			account_id BIGINT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		)`,
-		`CREATE UNIQUE INDEX IF NOT EXISTS uq_categories_lower_name ON categories ((LOWER(name)))`,
-		`CREATE TABLE IF NOT EXISTS budget_rules (
-			id BIGSERIAL PRIMARY KEY,
-			category_id BIGINT NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
-			period TEXT NOT NULL CHECK (period IN ('daily', 'weekly', 'monthly')),
-			limit_amount BIGINT NOT NULL CHECK (limit_amount > 0),
-			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-			UNIQUE (category_id, period)
-		)`,
-		`CREATE TABLE IF NOT EXISTS transactions (
-			id BIGSERIAL PRIMARY KEY,
-			type TEXT NOT NULL CHECK (type IN ('income', 'expense')),
-			category_id BIGINT NOT NULL REFERENCES categories(id) ON DELETE RESTRICT,
-			amount BIGINT NOT NULL CHECK (amount > 0),
-			trx_date DATE NOT NULL,
-			note TEXT NOT NULL DEFAULT '',
-			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-		)`,
-		`CREATE INDEX IF NOT EXISTS idx_transactions_trx_date ON transactions (trx_date)`,
-		`CREATE INDEX IF NOT EXISTS idx_transactions_category_id ON transactions (category_id)`,
-		`CREATE TABLE IF NOT EXISTS salary_masters (
-			id BIGSERIAL PRIMARY KEY,
-			month TEXT NOT NULL UNIQUE CHECK (month ~ '^[0-9]{4}-[0-9]{2}$'),
-			amount BIGINT NOT NULL CHECK (amount > 0),
-			note TEXT NOT NULL DEFAULT '',
-			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-		)`,
+
+		// Keep old user_profiles for backward compat (no-op if already exists)
 		`CREATE TABLE IF NOT EXISTS user_profiles (
 			id BIGSERIAL PRIMARY KEY,
 			full_name TEXT NOT NULL,
@@ -67,7 +55,6 @@ func (s *Store) EnsureSchema(ctx context.Context) error {
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		)`,
-		`CREATE UNIQUE INDEX IF NOT EXISTS uq_user_profiles_lower_email ON user_profiles ((LOWER(email)))`,
 	}
 
 	for _, stmt := range statements {
@@ -76,48 +63,184 @@ func (s *Store) EnsureSchema(ctx context.Context) error {
 		}
 	}
 
+	// Migration: ensure categories table has account_id column
+	// If the table doesn't exist yet, create it fresh with account_id.
+	// If it exists without account_id, add the column.
+	if err := s.migrateCategories(ctx); err != nil {
+		return err
+	}
+	if err := s.migrateBudgetRules(ctx); err != nil {
+		return err
+	}
+	if err := s.migrateTransactions(ctx); err != nil {
+		return err
+	}
+	if err := s.migrateSalaryMasters(ctx); err != nil {
+		return err
+	}
+
 	return nil
 }
 
-// SeedDefaults inserts default categories, budget rules, and user profile.
+func (s *Store) migrateCategories(ctx context.Context) error {
+	// Create table if not exists (new schema with account_id)
+	if _, err := s.DB.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS categories (
+			id BIGSERIAL PRIMARY KEY,
+			account_id BIGINT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+			name TEXT NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			UNIQUE (account_id, name)
+		)`); err != nil {
+		return err
+	}
+	// Add account_id column if missing (migration for existing DB)
+	if _, err := s.DB.Exec(ctx, `
+		ALTER TABLE categories ADD COLUMN IF NOT EXISTS account_id BIGINT REFERENCES accounts(id) ON DELETE CASCADE`); err != nil {
+		return err
+	}
+	// Drop old single-column unique constraint if it exists (ignore error if not found)
+	_, _ = s.DB.Exec(ctx, `ALTER TABLE categories DROP CONSTRAINT IF EXISTS categories_name_key`)
+	_, _ = s.DB.Exec(ctx, `DROP INDEX IF EXISTS uq_categories_lower_name`)
+	if _, err := s.DB.Exec(ctx, `
+		CREATE UNIQUE INDEX IF NOT EXISTS uq_categories_account_lower_name ON categories (account_id, (LOWER(name)))`); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Store) migrateBudgetRules(ctx context.Context) error {
+	if _, err := s.DB.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS budget_rules (
+			id BIGSERIAL PRIMARY KEY,
+			account_id BIGINT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+			category_id BIGINT NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+			period TEXT NOT NULL CHECK (period IN ('daily', 'weekly', 'monthly')),
+			limit_amount BIGINT NOT NULL CHECK (limit_amount > 0),
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			UNIQUE (account_id, category_id, period)
+		)`); err != nil {
+		return err
+	}
+	if _, err := s.DB.Exec(ctx, `
+		ALTER TABLE budget_rules ADD COLUMN IF NOT EXISTS account_id BIGINT REFERENCES accounts(id) ON DELETE CASCADE`); err != nil {
+		return err
+	}
+	// Drop old unique constraint (category_id, period) if exists
+	_, _ = s.DB.Exec(ctx, `ALTER TABLE budget_rules DROP CONSTRAINT IF EXISTS budget_rules_category_id_period_key`)
+	return nil
+}
+
+func (s *Store) migrateTransactions(ctx context.Context) error {
+	if _, err := s.DB.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS transactions (
+			id BIGSERIAL PRIMARY KEY,
+			account_id BIGINT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+			type TEXT NOT NULL CHECK (type IN ('income', 'expense')),
+			category_id BIGINT NOT NULL REFERENCES categories(id) ON DELETE RESTRICT,
+			amount BIGINT NOT NULL CHECK (amount > 0),
+			trx_date DATE NOT NULL,
+			note TEXT NOT NULL DEFAULT '',
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`); err != nil {
+		return err
+	}
+	if _, err := s.DB.Exec(ctx, `
+		ALTER TABLE transactions ADD COLUMN IF NOT EXISTS account_id BIGINT REFERENCES accounts(id) ON DELETE CASCADE`); err != nil {
+		return err
+	}
+	if _, err := s.DB.Exec(ctx, `
+		CREATE INDEX IF NOT EXISTS idx_transactions_account_trx_date ON transactions (account_id, trx_date)`); err != nil {
+		return err
+	}
+	if _, err := s.DB.Exec(ctx, `
+		CREATE INDEX IF NOT EXISTS idx_transactions_category_id ON transactions (category_id)`); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Store) migrateSalaryMasters(ctx context.Context) error {
+	if _, err := s.DB.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS salary_masters (
+			id BIGSERIAL PRIMARY KEY,
+			account_id BIGINT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+			month TEXT NOT NULL CHECK (month ~ '^[0-9]{4}-[0-9]{2}$'),
+			amount BIGINT NOT NULL CHECK (amount > 0),
+			note TEXT NOT NULL DEFAULT '',
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			UNIQUE (account_id, month)
+		)`); err != nil {
+		return err
+	}
+	if _, err := s.DB.Exec(ctx, `
+		ALTER TABLE salary_masters ADD COLUMN IF NOT EXISTS account_id BIGINT REFERENCES accounts(id) ON DELETE CASCADE`); err != nil {
+		return err
+	}
+	// Drop old unique constraint (month) if exists
+	_, _ = s.DB.Exec(ctx, `ALTER TABLE salary_masters DROP CONSTRAINT IF EXISTS salary_masters_month_key`)
+	return nil
+}
+
+// SeedDefaults inserts the default admin account and its default categories/budget rules.
 func (s *Store) SeedDefaults(ctx context.Context) error {
-	if _, err := s.DB.Exec(ctx, `
-		INSERT INTO categories (name) VALUES
-		('Makan'),
-		('Bensin'),
-		('Transport'),
-		('Belanja'),
-		('Hiburan'),
-		('Tagihan'),
-		('Gaji')
-		ON CONFLICT (name) DO NOTHING`); err != nil {
-		return err
-	}
-
-	if _, err := s.DB.Exec(ctx, `
-		INSERT INTO budget_rules (category_id, period, limit_amount)
-		SELECT id, 'daily', 60000
-		FROM categories
-		WHERE name = 'Makan'
-		ON CONFLICT (category_id, period) DO NOTHING`); err != nil {
-		return err
-	}
-
-	if _, err := s.DB.Exec(ctx, `
-		INSERT INTO budget_rules (category_id, period, limit_amount)
-		SELECT id, 'monthly', 240000
-		FROM categories
-		WHERE name = 'Bensin'
-		ON CONFLICT (category_id, period) DO NOTHING`); err != nil {
-		return err
-	}
-
-	if _, err := s.DB.Exec(ctx, `
-		INSERT INTO user_profiles (full_name, email, password_hash, avatar_initials)
-		VALUES ('Rasa Saufar', $1, $2, 'RS')
-		ON CONFLICT (email) DO NOTHING`,
+	// Upsert admin account
+	var adminID int64
+	err := s.DB.QueryRow(ctx, `
+		INSERT INTO accounts (full_name, email, password_hash, role)
+		VALUES ('Rasa Saufar', $1, $2, 'admin')
+		ON CONFLICT (email) DO UPDATE SET role = 'admin'
+		RETURNING id`,
 		types.HardcodedEmail,
 		types.HardcodedPassword,
+	).Scan(&adminID)
+	if err != nil {
+		return err
+	}
+
+	// Migration: assign orphaned data (account_id IS NULL) to admin
+	for _, table := range []string{"categories", "budget_rules", "transactions", "salary_masters"} {
+		if _, err := s.DB.Exec(ctx,
+			`UPDATE `+table+` SET account_id = $1 WHERE account_id IS NULL`,
+			adminID,
+		); err != nil {
+			return err
+		}
+	}
+
+	// Seed default categories for admin
+	defaultCategories := []string{"Makan", "Bensin", "Transport", "Belanja", "Hiburan", "Tagihan", "Gaji"}
+	for _, name := range defaultCategories {
+		if _, err := s.DB.Exec(ctx, `
+			INSERT INTO categories (account_id, name) VALUES ($1, $2)
+			ON CONFLICT DO NOTHING`,
+			adminID, name,
+		); err != nil {
+			return err
+		}
+	}
+
+	// Seed default budget rules for admin
+	if _, err := s.DB.Exec(ctx, `
+		INSERT INTO budget_rules (account_id, category_id, period, limit_amount)
+		SELECT $1, id, 'daily', 60000
+		FROM categories
+		WHERE account_id = $1 AND name = 'Makan'
+		ON CONFLICT DO NOTHING`,
+		adminID,
+	); err != nil {
+		return err
+	}
+
+	if _, err := s.DB.Exec(ctx, `
+		INSERT INTO budget_rules (account_id, category_id, period, limit_amount)
+		SELECT $1, id, 'monthly', 240000
+		FROM categories
+		WHERE account_id = $1 AND name = 'Bensin'
+		ON CONFLICT DO NOTHING`,
+		adminID,
 	); err != nil {
 		return err
 	}
@@ -125,9 +248,211 @@ func (s *Store) SeedDefaults(ctx context.Context) error {
 	return nil
 }
 
+// --- Auth / Sessions ---
+
+// FindAccountByEmail returns account info for login.
+func (s *Store) FindAccountByEmail(ctx context.Context, email string) (types.DBAccount, error) {
+	item := types.DBAccount{}
+	err := s.DB.QueryRow(ctx, `
+		SELECT id, full_name, email, password_hash, role
+		FROM accounts
+		WHERE LOWER(email) = LOWER($1)
+		LIMIT 1`,
+		strings.TrimSpace(email),
+	).Scan(&item.ID, &item.FullName, &item.Email, &item.PasswordHash, &item.Role)
+	if err != nil {
+		return types.DBAccount{}, err
+	}
+	return item, nil
+}
+
+// CreateSession stores a new session token for an account.
+func (s *Store) CreateSession(ctx context.Context, token string, accountID int64) error {
+	_, err := s.DB.Exec(ctx, `
+		INSERT INTO sessions (token, account_id) VALUES ($1, $2)`,
+		token, accountID,
+	)
+	return err
+}
+
+// FindAccountByToken returns the account associated with a session token.
+func (s *Store) FindAccountByToken(ctx context.Context, token string) (types.DBAccount, error) {
+	item := types.DBAccount{}
+	err := s.DB.QueryRow(ctx, `
+		SELECT a.id, a.full_name, a.email, a.password_hash, a.role
+		FROM sessions s
+		JOIN accounts a ON a.id = s.account_id
+		WHERE s.token = $1
+		LIMIT 1`,
+		token,
+	).Scan(&item.ID, &item.FullName, &item.Email, &item.PasswordHash, &item.Role)
+	if err != nil {
+		return types.DBAccount{}, err
+	}
+	return item, nil
+}
+
+// DeleteSession removes a session token (logout).
+func (s *Store) DeleteSession(ctx context.Context, token string) error {
+	_, err := s.DB.Exec(ctx, `DELETE FROM sessions WHERE token = $1`, token)
+	return err
+}
+
+// --- Admin: Account Management ---
+
+func (s *Store) ListAccounts(ctx context.Context) ([]types.DBAccount, error) {
+	rows, err := s.DB.Query(ctx, `
+		SELECT id, full_name, email, role
+		FROM accounts
+		ORDER BY id ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]types.DBAccount, 0)
+	for rows.Next() {
+		item := types.DBAccount{}
+		if err := rows.Scan(&item.ID, &item.FullName, &item.Email, &item.Role); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *Store) CreateAccount(ctx context.Context, name, email, passwordHash, role string) (types.DBAccount, error) {
+	item := types.DBAccount{}
+	err := s.DB.QueryRow(ctx, `
+		INSERT INTO accounts (full_name, email, password_hash, role)
+		VALUES ($1, $2, $3, $4)
+		RETURNING id, full_name, email, role`,
+		name, email, passwordHash, role,
+	).Scan(&item.ID, &item.FullName, &item.Email, &item.Role)
+	if err != nil {
+		return types.DBAccount{}, err
+	}
+	return item, nil
+}
+
+func (s *Store) UpdateAccount(ctx context.Context, id int64, name, email, passwordHash, role string) (types.DBAccount, error) {
+	item := types.DBAccount{}
+	var err error
+	if passwordHash != "" {
+		err = s.DB.QueryRow(ctx, `
+			UPDATE accounts
+			SET full_name = $1, email = $2, password_hash = $3, role = $4, updated_at = NOW()
+			WHERE id = $5
+			RETURNING id, full_name, email, role`,
+			name, email, passwordHash, role, id,
+		).Scan(&item.ID, &item.FullName, &item.Email, &item.Role)
+	} else {
+		err = s.DB.QueryRow(ctx, `
+			UPDATE accounts
+			SET full_name = $1, email = $2, role = $3, updated_at = NOW()
+			WHERE id = $4
+			RETURNING id, full_name, email, role`,
+			name, email, role, id,
+		).Scan(&item.ID, &item.FullName, &item.Email, &item.Role)
+	}
+	if err != nil {
+		return types.DBAccount{}, err
+	}
+	return item, nil
+}
+
+func (s *Store) DeleteAccount(ctx context.Context, id int64) error {
+	result, err := s.DB.Exec(ctx, `DELETE FROM accounts WHERE id = $1`, id)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() == 0 {
+		return errors.New("akun tidak ditemukan")
+	}
+	return nil
+}
+
+// SeedDefaultCategoriesForAccount seeds default categories for a newly created account.
+func (s *Store) SeedDefaultCategoriesForAccount(ctx context.Context, accountID int64) error {
+	defaultCategories := []string{"Makan", "Bensin", "Transport", "Belanja", "Hiburan", "Tagihan", "Gaji"}
+	for _, name := range defaultCategories {
+		if _, err := s.DB.Exec(ctx, `
+			INSERT INTO categories (account_id, name) VALUES ($1, $2)
+			ON CONFLICT DO NOTHING`,
+			accountID, name,
+		); err != nil {
+			return err
+		}
+	}
+
+	// Default budget rules
+	if _, err := s.DB.Exec(ctx, `
+		INSERT INTO budget_rules (account_id, category_id, period, limit_amount)
+		SELECT $1, id, 'daily', 60000
+		FROM categories WHERE account_id = $1 AND name = 'Makan'
+		ON CONFLICT DO NOTHING`,
+		accountID,
+	); err != nil {
+		return err
+	}
+
+	if _, err := s.DB.Exec(ctx, `
+		INSERT INTO budget_rules (account_id, category_id, period, limit_amount)
+		SELECT $1, id, 'monthly', 240000
+		FROM categories WHERE account_id = $1 AND name = 'Bensin'
+		ON CONFLICT DO NOTHING`,
+		accountID,
+	); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// --- User Profile (self-update) ---
+
+func (s *Store) FindAccountByID(ctx context.Context, id int64) (types.DBAccount, error) {
+	item := types.DBAccount{}
+	err := s.DB.QueryRow(ctx, `
+		SELECT id, full_name, email, password_hash, role
+		FROM accounts WHERE id = $1`,
+		id,
+	).Scan(&item.ID, &item.FullName, &item.Email, &item.PasswordHash, &item.Role)
+	if err != nil {
+		return types.DBAccount{}, err
+	}
+	return item, nil
+}
+
+func (s *Store) UpdateSelfProfile(ctx context.Context, id int64, name, email, passwordHash string) (types.DBAccount, error) {
+	item := types.DBAccount{}
+	var err error
+	if passwordHash != "" {
+		err = s.DB.QueryRow(ctx, `
+			UPDATE accounts
+			SET full_name = $1, email = $2, password_hash = $3, updated_at = NOW()
+			WHERE id = $4
+			RETURNING id, full_name, email, role`,
+			name, email, passwordHash, id,
+		).Scan(&item.ID, &item.FullName, &item.Email, &item.Role)
+	} else {
+		err = s.DB.QueryRow(ctx, `
+			UPDATE accounts
+			SET full_name = $1, email = $2, updated_at = NOW()
+			WHERE id = $3
+			RETURNING id, full_name, email, role`,
+			name, email, id,
+		).Scan(&item.ID, &item.FullName, &item.Email, &item.Role)
+	}
+	if err != nil {
+		return types.DBAccount{}, err
+	}
+	return item, nil
+}
+
 // --- Transactions ---
 
-func (s *Store) ListTransactions(ctx context.Context) ([]types.DBTransaction, error) {
+func (s *Store) ListTransactions(ctx context.Context, accountID int64) ([]types.DBTransaction, error) {
 	rows, err := s.DB.Query(ctx, `
 		SELECT
 			t.id,
@@ -139,7 +464,9 @@ func (s *Store) ListTransactions(ctx context.Context) ([]types.DBTransaction, er
 			t.note
 		FROM transactions t
 		JOIN categories c ON c.id = t.category_id
-		ORDER BY t.trx_date DESC, t.id DESC`)
+		WHERE t.account_id = $1
+		ORDER BY t.trx_date DESC, t.id DESC`,
+		accountID)
 	if err != nil {
 		return nil, err
 	}
@@ -167,8 +494,12 @@ func (s *Store) ListTransactions(ctx context.Context) ([]types.DBTransaction, er
 
 // --- Categories ---
 
-func (s *Store) ListCategories(ctx context.Context) ([]types.Category, error) {
-	rows, err := s.DB.Query(ctx, `SELECT id, name FROM categories ORDER BY name ASC`)
+func (s *Store) ListCategories(ctx context.Context, accountID int64) ([]types.Category, error) {
+	rows, err := s.DB.Query(ctx, `
+		SELECT id, name FROM categories
+		WHERE account_id = $1
+		ORDER BY name ASC`,
+		accountID)
 	if err != nil {
 		return nil, err
 	}
@@ -186,12 +517,13 @@ func (s *Store) ListCategories(ctx context.Context) ([]types.Category, error) {
 	return items, rows.Err()
 }
 
-func (s *Store) FindCategoryByName(ctx context.Context, name string) (types.Category, error) {
+func (s *Store) FindCategoryByName(ctx context.Context, accountID int64, name string) (types.Category, error) {
 	item := types.Category{}
-	err := s.DB.QueryRow(
-		ctx,
-		`SELECT id, name FROM categories WHERE LOWER(name) = LOWER($1) ORDER BY id LIMIT 1`,
-		strings.TrimSpace(name),
+	err := s.DB.QueryRow(ctx, `
+		SELECT id, name FROM categories
+		WHERE account_id = $1 AND LOWER(name) = LOWER($2)
+		ORDER BY id LIMIT 1`,
+		accountID, strings.TrimSpace(name),
 	).Scan(&item.ID, &item.Name)
 	if err != nil {
 		return types.Category{}, err
@@ -199,26 +531,29 @@ func (s *Store) FindCategoryByName(ctx context.Context, name string) (types.Cate
 	return item, nil
 }
 
-func (s *Store) FindCategoryByID(ctx context.Context, id int64) (types.Category, error) {
+func (s *Store) FindCategoryByID(ctx context.Context, accountID int64, id int64) (types.Category, error) {
 	item := types.Category{}
-	err := s.DB.QueryRow(ctx, `SELECT id, name FROM categories WHERE id = $1`, id).Scan(&item.ID, &item.Name)
+	err := s.DB.QueryRow(ctx, `
+		SELECT id, name FROM categories
+		WHERE account_id = $1 AND id = $2`,
+		accountID, id,
+	).Scan(&item.ID, &item.Name)
 	if err != nil {
 		return types.Category{}, err
 	}
 	return item, nil
 }
 
-func (s *Store) CategoryNameExists(ctx context.Context, name string, exceptID int64) (bool, error) {
+func (s *Store) CategoryNameExists(ctx context.Context, accountID int64, name string, exceptID int64) (bool, error) {
 	var exists bool
-	err := s.DB.QueryRow(
-		ctx,
-		`SELECT EXISTS (
+	err := s.DB.QueryRow(ctx, `
+		SELECT EXISTS (
 			SELECT 1 FROM categories
-			WHERE LOWER(name) = LOWER($1)
-			  AND ($2 = 0 OR id <> $2)
+			WHERE account_id = $1
+			  AND LOWER(name) = LOWER($2)
+			  AND ($3 = 0 OR id <> $3)
 		)`,
-		strings.TrimSpace(name),
-		exceptID,
+		accountID, strings.TrimSpace(name), exceptID,
 	).Scan(&exists)
 	if err != nil {
 		return false, err
@@ -228,7 +563,7 @@ func (s *Store) CategoryNameExists(ctx context.Context, name string, exceptID in
 
 // --- Budget Rules ---
 
-func (s *Store) ListBudgetRules(ctx context.Context) ([]types.DBBudgetRule, error) {
+func (s *Store) ListBudgetRules(ctx context.Context, accountID int64) ([]types.DBBudgetRule, error) {
 	rows, err := s.DB.Query(ctx, `
 		SELECT
 			br.id,
@@ -238,7 +573,9 @@ func (s *Store) ListBudgetRules(ctx context.Context) ([]types.DBBudgetRule, erro
 			br.limit_amount
 		FROM budget_rules br
 		JOIN categories c ON c.id = br.category_id
-		ORDER BY c.name ASC, br.period ASC`)
+		WHERE br.account_id = $1
+		ORDER BY c.name ASC, br.period ASC`,
+		accountID)
 	if err != nil {
 		return nil, err
 	}
@@ -262,7 +599,7 @@ func (s *Store) ListBudgetRules(ctx context.Context) ([]types.DBBudgetRule, erro
 	return items, rows.Err()
 }
 
-func (s *Store) ListBudgetRulesByCategoryID(ctx context.Context, categoryID int64) ([]types.DBBudgetRule, error) {
+func (s *Store) ListBudgetRulesByCategoryID(ctx context.Context, accountID int64, categoryID int64) ([]types.DBBudgetRule, error) {
 	rows, err := s.DB.Query(ctx, `
 		SELECT
 			br.id,
@@ -272,7 +609,8 @@ func (s *Store) ListBudgetRulesByCategoryID(ctx context.Context, categoryID int6
 			br.limit_amount
 		FROM budget_rules br
 		JOIN categories c ON c.id = br.category_id
-		WHERE br.category_id = $1`, categoryID)
+		WHERE br.account_id = $1 AND br.category_id = $2`,
+		accountID, categoryID)
 	if err != nil {
 		return nil, err
 	}
@@ -290,39 +628,42 @@ func (s *Store) ListBudgetRulesByCategoryID(ctx context.Context, categoryID int6
 	return items, rows.Err()
 }
 
-func (s *Store) SumExpenseForRule(ctx context.Context, categoryID int64, period string, referenceDate time.Time, excludeTransactionID int64) (int64, error) {
+func (s *Store) SumExpenseForRule(ctx context.Context, accountID int64, categoryID int64, period string, referenceDate time.Time, excludeTransactionID int64) (int64, error) {
 	var query string
 	switch period {
 	case "daily":
 		query = `
 			SELECT COALESCE(SUM(amount), 0)
 			FROM transactions
-			WHERE type = 'expense'
-			  AND category_id = $1
-			  AND ($2 = 0 OR id <> $2)
-			  AND trx_date = $3::date`
+			WHERE account_id = $1
+			  AND type = 'expense'
+			  AND category_id = $2
+			  AND ($3 = 0 OR id <> $3)
+			  AND trx_date = $4::date`
 	case "weekly":
 		query = `
 			SELECT COALESCE(SUM(amount), 0)
 			FROM transactions
-			WHERE type = 'expense'
-			  AND category_id = $1
-			  AND ($2 = 0 OR id <> $2)
-			  AND DATE_TRUNC('week', trx_date) = DATE_TRUNC('week', $3::date)`
+			WHERE account_id = $1
+			  AND type = 'expense'
+			  AND category_id = $2
+			  AND ($3 = 0 OR id <> $3)
+			  AND DATE_TRUNC('week', trx_date) = DATE_TRUNC('week', $4::date)`
 	case "monthly":
 		query = `
 			SELECT COALESCE(SUM(amount), 0)
 			FROM transactions
-			WHERE type = 'expense'
-			  AND category_id = $1
-			  AND ($2 = 0 OR id <> $2)
-			  AND DATE_TRUNC('month', trx_date) = DATE_TRUNC('month', $3::date)`
+			WHERE account_id = $1
+			  AND type = 'expense'
+			  AND category_id = $2
+			  AND ($3 = 0 OR id <> $3)
+			  AND DATE_TRUNC('month', trx_date) = DATE_TRUNC('month', $4::date)`
 	default:
 		return 0, errors.New("periode tidak valid")
 	}
 
 	var total int64
-	err := s.DB.QueryRow(ctx, query, categoryID, excludeTransactionID, referenceDate).Scan(&total)
+	err := s.DB.QueryRow(ctx, query, accountID, categoryID, excludeTransactionID, referenceDate).Scan(&total)
 	if err != nil {
 		return 0, err
 	}
@@ -330,19 +671,19 @@ func (s *Store) SumExpenseForRule(ctx context.Context, categoryID int64, period 
 	return total, nil
 }
 
-func (s *Store) CheckBudgetForTransaction(ctx context.Context, categoryID int64, trxType string, referenceDate time.Time, additionalAmount int64, excludeTransactionID int64) ([]types.BudgetCheck, error) {
+func (s *Store) CheckBudgetForTransaction(ctx context.Context, accountID int64, categoryID int64, trxType string, referenceDate time.Time, additionalAmount int64, excludeTransactionID int64) ([]types.BudgetCheck, error) {
 	if trxType != "expense" {
 		return []types.BudgetCheck{}, nil
 	}
 
-	rules, err := s.ListBudgetRulesByCategoryID(ctx, categoryID)
+	rules, err := s.ListBudgetRulesByCategoryID(ctx, accountID, categoryID)
 	if err != nil {
 		return nil, err
 	}
 
 	checks := make([]types.BudgetCheck, 0, len(rules))
 	for _, rule := range rules {
-		used, err := s.SumExpenseForRule(ctx, categoryID, rule.Period, referenceDate, excludeTransactionID)
+		used, err := s.SumExpenseForRule(ctx, accountID, categoryID, rule.Period, referenceDate, excludeTransactionID)
 		if err != nil {
 			return nil, err
 		}
@@ -359,11 +700,13 @@ func (s *Store) CheckBudgetForTransaction(ctx context.Context, categoryID int64,
 
 // --- Salary Masters ---
 
-func (s *Store) ListSalaryMasters(ctx context.Context) ([]types.SalaryMaster, error) {
+func (s *Store) ListSalaryMasters(ctx context.Context, accountID int64) ([]types.SalaryMaster, error) {
 	rows, err := s.DB.Query(ctx, `
 		SELECT id, month, amount, note
 		FROM salary_masters
-		ORDER BY month DESC, id DESC`)
+		WHERE account_id = $1
+		ORDER BY month DESC, id DESC`,
+		accountID)
 	if err != nil {
 		return nil, err
 	}
@@ -381,12 +724,13 @@ func (s *Store) ListSalaryMasters(ctx context.Context) ([]types.SalaryMaster, er
 	return items, rows.Err()
 }
 
-func (s *Store) SalaryForMonth(ctx context.Context, month string) (int64, error) {
+func (s *Store) SalaryForMonth(ctx context.Context, accountID int64, month string) (int64, error) {
 	var total int64
-	err := s.DB.QueryRow(
-		ctx,
-		`SELECT COALESCE(SUM(amount), 0) FROM salary_masters WHERE month = $1`,
-		month,
+	err := s.DB.QueryRow(ctx, `
+		SELECT COALESCE(SUM(amount), 0)
+		FROM salary_masters
+		WHERE account_id = $1 AND month = $2`,
+		accountID, month,
 	).Scan(&total)
 	if err != nil {
 		return 0, err
@@ -394,73 +738,18 @@ func (s *Store) SalaryForMonth(ctx context.Context, month string) (int64, error)
 	return total, nil
 }
 
-func (s *Store) SalaryToMonth(ctx context.Context, month string) (int64, error) {
+func (s *Store) SalaryToMonth(ctx context.Context, accountID int64, month string) (int64, error) {
 	var total int64
-	err := s.DB.QueryRow(
-		ctx,
-		`SELECT COALESCE(SUM(amount), 0) FROM salary_masters WHERE month <= $1`,
-		month,
+	err := s.DB.QueryRow(ctx, `
+		SELECT COALESCE(SUM(amount), 0)
+		FROM salary_masters
+		WHERE account_id = $1 AND month <= $2`,
+		accountID, month,
 	).Scan(&total)
 	if err != nil {
 		return 0, err
 	}
 	return total, nil
-}
-
-// --- User Profile ---
-
-func (s *Store) FindUserProfileByEmail(ctx context.Context, email string) (types.DBUserProfile, error) {
-	item := types.DBUserProfile{}
-	err := s.DB.QueryRow(
-		ctx,
-		`SELECT id, full_name, email
-		 FROM user_profiles
-		 WHERE LOWER(email) = LOWER($1)
-		 ORDER BY id
-		 LIMIT 1`,
-		strings.TrimSpace(email),
-	).Scan(&item.ID, &item.FullName, &item.Email)
-	if err != nil {
-		return types.DBUserProfile{}, err
-	}
-	return item, nil
-}
-
-func (s *Store) UpdateUserProfile(ctx context.Context, currentEmail, newName, newEmail, newPassword string) (types.DBUserProfile, error) {
-	var item types.DBUserProfile
-
-	if newPassword != "" {
-		err := s.DB.QueryRow(
-			ctx,
-			`UPDATE user_profiles
-			 SET full_name = $1,
-			     email = $2,
-			     password_hash = $3,
-			     updated_at = NOW()
-			 WHERE LOWER(email) = LOWER($4)
-			 RETURNING id, full_name, email`,
-			newName, newEmail, newPassword, currentEmail,
-		).Scan(&item.ID, &item.FullName, &item.Email)
-		if err != nil {
-			return types.DBUserProfile{}, err
-		}
-	} else {
-		err := s.DB.QueryRow(
-			ctx,
-			`UPDATE user_profiles
-			 SET full_name = $1,
-			     email = $2,
-			     updated_at = NOW()
-			 WHERE LOWER(email) = LOWER($3)
-			 RETURNING id, full_name, email`,
-			newName, newEmail, currentEmail,
-		).Scan(&item.ID, &item.FullName, &item.Email)
-		if err != nil {
-			return types.DBUserProfile{}, err
-		}
-	}
-
-	return item, nil
 }
 
 // --- Helpers ---

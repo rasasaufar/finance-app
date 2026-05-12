@@ -1,14 +1,25 @@
 package handler
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"net/http"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/rasasaufar/finance-app/api/internal/httputil"
+	"github.com/rasasaufar/finance-app/api/internal/middleware"
 	"github.com/rasasaufar/finance-app/api/internal/types"
 )
+
+func generateToken() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
+}
 
 func (h *Handler) HandleLogin(w http.ResponseWriter, r *http.Request) {
 	var input types.LoginRequest
@@ -17,37 +28,62 @@ func (h *Handler) HandleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if strings.TrimSpace(input.Email) != types.HardcodedEmail || strings.TrimSpace(input.Password) != types.HardcodedPassword {
-		httputil.WriteError(w, http.StatusUnauthorized, "email atau password salah")
-		return
-	}
+	email := strings.TrimSpace(input.Email)
+	password := strings.TrimSpace(input.Password)
 
-	profileName := "Rasas"
-	if profile, err := h.Store.FindUserProfileByEmail(r.Context(), types.HardcodedEmail); err == nil {
-		profileName = profile.FullName
-	}
-
-	httputil.WriteJSON(w, http.StatusOK, types.LoginResponse{
-		Token: types.DummyToken,
-		User: types.User{
-			Name:  profileName,
-			Email: types.HardcodedEmail,
-		},
-	})
-}
-
-func (h *Handler) HandleMe(w http.ResponseWriter, r *http.Request) {
-	profile, err := h.Store.FindUserProfileByEmail(r.Context(), types.HardcodedEmail)
+	account, err := h.Store.FindAccountByEmail(r.Context(), email)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			httputil.WriteJSON(w, http.StatusOK, types.User{Name: "Rasas", Email: types.HardcodedEmail})
+			httputil.WriteError(w, http.StatusUnauthorized, "email atau password salah")
 			return
 		}
 		httputil.WriteInternalServerError(w, err)
 		return
 	}
 
-	httputil.WriteJSON(w, http.StatusOK, types.User{Name: profile.FullName, Email: profile.Email})
+	if account.PasswordHash != password {
+		httputil.WriteError(w, http.StatusUnauthorized, "email atau password salah")
+		return
+	}
+
+	token, err := generateToken()
+	if err != nil {
+		httputil.WriteInternalServerError(w, err)
+		return
+	}
+
+	if err := h.Store.CreateSession(r.Context(), token, account.ID); err != nil {
+		httputil.WriteInternalServerError(w, err)
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, types.LoginResponse{
+		Token: token,
+		User: types.User{
+			Name:  account.FullName,
+			Email: account.Email,
+			Role:  account.Role,
+		},
+	})
+}
+
+func (h *Handler) HandleMe(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.UserIDFromContext(r.Context())
+	account, err := h.Store.FindAccountByID(r.Context(), userID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			httputil.WriteError(w, http.StatusNotFound, "akun tidak ditemukan")
+			return
+		}
+		httputil.WriteInternalServerError(w, err)
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, types.User{
+		Name:  account.FullName,
+		Email: account.Email,
+		Role:  account.Role,
+	})
 }
 
 func (h *Handler) HandleUpdateMe(w http.ResponseWriter, r *http.Request) {
@@ -69,16 +105,20 @@ func (h *Handler) HandleUpdateMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx := r.Context()
-	updated, err := h.Store.UpdateUserProfile(ctx, types.HardcodedEmail, name, email, strings.TrimSpace(input.Password))
+	userID := middleware.UserIDFromContext(r.Context())
+	updated, err := h.Store.UpdateSelfProfile(r.Context(), userID, name, email, strings.TrimSpace(input.Password))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			httputil.WriteError(w, http.StatusNotFound, "profil tidak ditemukan")
+			httputil.WriteError(w, http.StatusNotFound, "akun tidak ditemukan")
 			return
 		}
 		httputil.WriteInternalServerError(w, err)
 		return
 	}
 
-	httputil.WriteJSON(w, http.StatusOK, types.User{Name: updated.FullName, Email: updated.Email})
+	httputil.WriteJSON(w, http.StatusOK, types.User{
+		Name:  updated.FullName,
+		Email: updated.Email,
+		Role:  updated.Role,
+	})
 }

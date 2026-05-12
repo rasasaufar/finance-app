@@ -6,12 +6,14 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/rasasaufar/finance-app/api/internal/httputil"
+	"github.com/rasasaufar/finance-app/api/internal/middleware"
 	"github.com/rasasaufar/finance-app/api/internal/types"
 	"github.com/rasasaufar/finance-app/api/internal/validate"
 )
 
 func (h *Handler) HandleGetSalaryMasters(w http.ResponseWriter, r *http.Request) {
-	items, err := h.Store.ListSalaryMasters(r.Context())
+	accountID := middleware.UserIDFromContext(r.Context())
+	items, err := h.Store.ListSalaryMasters(r.Context(), accountID)
 	if err != nil {
 		httputil.WriteInternalServerError(w, err)
 		return
@@ -32,12 +34,14 @@ func (h *Handler) HandleCreateSalaryMaster(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	accountID := middleware.UserIDFromContext(r.Context())
 	created := types.SalaryMaster{}
 	err = h.Store.DB.QueryRow(
 		r.Context(),
-		`INSERT INTO salary_masters (month, amount, note)
-		 VALUES ($1, $2, $3)
+		`INSERT INTO salary_masters (account_id, month, amount, note)
+		 VALUES ($1, $2, $3, $4)
 		 RETURNING id, month, amount, note`,
+		accountID,
 		item.Month,
 		item.Amount,
 		item.Note,
@@ -73,6 +77,7 @@ func (h *Handler) HandleUpdateSalaryMaster(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	accountID := middleware.UserIDFromContext(r.Context())
 	updated := types.SalaryMaster{}
 	err = h.Store.DB.QueryRow(
 		r.Context(),
@@ -81,12 +86,13 @@ func (h *Handler) HandleUpdateSalaryMaster(w http.ResponseWriter, r *http.Reques
 		     amount = $2,
 		     note = $3,
 		     updated_at = NOW()
-		 WHERE id = $4
+		 WHERE id = $4 AND account_id = $5
 		 RETURNING id, month, amount, note`,
 		normalized.Month,
 		normalized.Amount,
 		normalized.Note,
 		id,
+		accountID,
 	).Scan(&updated.ID, &updated.Month, &updated.Amount, &updated.Note)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -111,7 +117,10 @@ func (h *Handler) HandleDeleteSalaryMaster(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	result, err := h.Store.DB.Exec(r.Context(), `DELETE FROM salary_masters WHERE id = $1`, id)
+	accountID := middleware.UserIDFromContext(r.Context())
+	result, err := h.Store.DB.Exec(r.Context(),
+		`DELETE FROM salary_masters WHERE id = $1 AND account_id = $2`,
+		id, accountID)
 	if err != nil {
 		httputil.WriteInternalServerError(w, err)
 		return

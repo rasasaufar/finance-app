@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/rasasaufar/finance-app/api/internal/httputil"
+	"github.com/rasasaufar/finance-app/api/internal/middleware"
 	"github.com/rasasaufar/finance-app/api/internal/store"
 	"github.com/rasasaufar/finance-app/api/internal/types"
 )
@@ -16,26 +17,27 @@ func (h *Handler) HandleDashboardSummary(w http.ResponseWriter, r *http.Request)
 	today := now.Format(types.DateLayout)
 	month := now.Format(types.MonthLayout)
 	ctx := r.Context()
+	accountID := middleware.UserIDFromContext(ctx)
 
-	transactions, err := h.Store.ListTransactions(ctx)
+	transactions, err := h.Store.ListTransactions(ctx, accountID)
 	if err != nil {
 		httputil.WriteInternalServerError(w, err)
 		return
 	}
 
-	rules, err := h.Store.ListBudgetRules(ctx)
+	rules, err := h.Store.ListBudgetRules(ctx, accountID)
 	if err != nil {
 		httputil.WriteInternalServerError(w, err)
 		return
 	}
 
-	salaryCurrentMonth, err := h.Store.SalaryForMonth(ctx, month)
+	salaryCurrentMonth, err := h.Store.SalaryForMonth(ctx, accountID, month)
 	if err != nil {
 		httputil.WriteInternalServerError(w, err)
 		return
 	}
 
-	salaryTotalToDate, err := h.Store.SalaryToMonth(ctx, month)
+	salaryTotalToDate, err := h.Store.SalaryToMonth(ctx, accountID, month)
 	if err != nil {
 		httputil.WriteInternalServerError(w, err)
 		return
@@ -85,7 +87,7 @@ func (h *Handler) HandleDashboardSummary(w http.ResponseWriter, r *http.Request)
 			bensinMonthlyRuleLimit += rule.Limit
 		}
 
-		used, err := h.Store.SumExpenseForRule(ctx, rule.CategoryID, rule.Period, now, 0)
+		used, err := h.Store.SumExpenseForRule(ctx, accountID, rule.CategoryID, rule.Period, now, 0)
 		if err != nil {
 			httputil.WriteInternalServerError(w, err)
 			return
@@ -211,13 +213,16 @@ func (h *Handler) HandleMonthlyReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	transactions, err := h.Store.ListTransactions(r.Context())
+	ctx := r.Context()
+	accountID := middleware.UserIDFromContext(ctx)
+
+	transactions, err := h.Store.ListTransactions(ctx, accountID)
 	if err != nil {
 		httputil.WriteInternalServerError(w, err)
 		return
 	}
 
-	rules, err := h.Store.ListBudgetRules(r.Context())
+	rules, err := h.Store.ListBudgetRules(ctx, accountID)
 	if err != nil {
 		httputil.WriteInternalServerError(w, err)
 		return
@@ -225,9 +230,7 @@ func (h *Handler) HandleMonthlyReport(w http.ResponseWriter, r *http.Request) {
 
 	var totalIncome int64
 	var totalExpense int64
-	// key: lowercase category name → total expense for the month
 	byCategoryMap := map[string]int64{}
-	// key: lowercase category name → original display name
 	categoryDisplayName := map[string]string{}
 
 	for _, trx := range transactions {
@@ -268,17 +271,14 @@ func (h *Handler) HandleMonthlyReport(w http.ResponseWriter, r *http.Request) {
 		effectiveLimit := rule.Limit
 
 		if rule.Period == "monthly" {
-			// For monthly rules, query the DB directly (already sums the whole month)
-			used, err = h.Store.SumExpenseForRule(r.Context(), rule.CategoryID, rule.Period, reference, 0)
+			used, err = h.Store.SumExpenseForRule(ctx, accountID, rule.CategoryID, rule.Period, reference, 0)
 			if err != nil {
 				httputil.WriteInternalServerError(w, err)
 				return
 			}
 		} else {
-			// For daily/weekly rules in a monthly report, sum all expenses in the month
 			used = byCategoryMap[strings.ToLower(strings.TrimSpace(rule.Category))]
 			if rule.Period == "daily" {
-				// Scale daily limit to the full month
 				effectiveLimit = rule.Limit * daysInRef
 			}
 		}

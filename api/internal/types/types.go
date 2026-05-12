@@ -5,10 +5,18 @@ import "time"
 const (
 	HardcodedEmail    = "rasas@example.com"
 	HardcodedPassword = "password123"
-	DummyToken        = "dummy-token-rasas"
 	DateLayout        = "2006-01-02"
 	MonthLayout       = "2006-01"
+	RoleAdmin         = "admin"
+	RoleUser          = "user"
 )
+
+// --- Context keys ---
+
+type contextKey string
+
+const UserIDKey contextKey = "userID"
+const UserRoleKey contextKey = "userRole"
 
 // --- Auth ---
 
@@ -25,12 +33,36 @@ type LoginResponse struct {
 type User struct {
 	Name  string `json:"name"`
 	Email string `json:"email"`
+	Role  string `json:"role"`
 }
 
 type UpdateProfileInput struct {
 	Name     string `json:"name"`
 	Email    string `json:"email"`
 	Password string `json:"password,omitempty"`
+}
+
+// --- Admin Account Management ---
+
+type AccountInput struct {
+	Name     string `json:"name"`
+	Email    string `json:"email"`
+	Password string `json:"password"`
+	Role     string `json:"role"`
+}
+
+type AccountUpdateInput struct {
+	Name     string `json:"name"`
+	Email    string `json:"email"`
+	Password string `json:"password,omitempty"`
+	Role     string `json:"role"`
+}
+
+type AccountResponse struct {
+	ID    int64  `json:"id"`
+	Name  string `json:"name"`
+	Email string `json:"email"`
+	Role  string `json:"role"`
 }
 
 // --- Transaction ---
@@ -162,4 +194,12 @@ type DBUserProfile struct {
 	ID       int64
 	FullName string
 	Email    string
+}
+
+type DBAccount struct {
+	ID           int64
+	FullName     string
+	Email        string
+	PasswordHash string
+	Role         string
 }
