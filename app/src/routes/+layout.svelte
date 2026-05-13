@@ -415,6 +415,13 @@
 
 	onMount(() => {
 		loadTheme();
+
+		// Register service worker untuk PWA
+		if ('serviceWorker' in navigator) {
+			navigator.serviceWorker.register('/sw.js').catch(() => {
+				// Gagal register SW tidak perlu crash app
+			});
+		}
 	});
 
 	// Re-run loadProfile whenever login state changes (e.g. right after login redirect)
