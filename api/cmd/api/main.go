@@ -105,6 +105,12 @@ func main() {
 
 		pr.Get("/reports/monthly", h.HandleMonthlyReport)
 
+		pr.Get("/wedding", h.HandleGetWeddingSummary)
+		pr.Put("/wedding/config", h.HandleUpdateWeddingConfig)
+		pr.Post("/wedding/deposits", h.HandleCreateWeddingDeposit)
+		pr.Put("/wedding/deposits/{id}", h.HandleUpdateWeddingDeposit)
+		pr.Delete("/wedding/deposits/{id}", h.HandleDeleteWeddingDeposit)
+
 		// Admin-only routes
 		pr.Group(func(ar chi.Router) {
 			ar.Use(middleware.AdminOnly)

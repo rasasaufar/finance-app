@@ -141,6 +141,36 @@ type SalaryMasterInput struct {
 	Note   string `json:"note"`
 }
 
+// --- Wedding Savings (Tabungan Nikah) ---
+
+type WeddingDeposit struct {
+	ID     int64  `json:"id"`
+	Date   string `json:"date"`
+	Amount int64  `json:"amount"`
+	Note   string `json:"note"`
+	Source string `json:"source"` // self, partner, gift, other
+}
+
+type WeddingDepositInput struct {
+	Date   string `json:"date"`
+	Amount int64  `json:"amount"`
+	Note   string `json:"note"`
+	Source string `json:"source"`
+}
+
+type WeddingConfig struct {
+	TargetAmount int64  `json:"target_amount"`
+	TargetDate   string `json:"target_date"`
+	BrideName    string `json:"bride_name"`
+	GroomName    string `json:"groom_name"`
+	Venue        string `json:"venue"`
+}
+
+type WeddingSummary struct {
+	Config   WeddingConfig    `json:"config"`
+	Deposits []WeddingDeposit `json:"deposits"`
+}
+
 // --- Dashboard & Reports ---
 
 type DashboardSummaryResponse struct {
