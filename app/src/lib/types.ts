@@ -89,3 +89,24 @@ export interface AccountResponse {
 	email: string;
 	role: string;
 }
+
+export interface WeddingDeposit {
+	id: number;
+	date: string;
+	amount: number;
+	note: string;
+	source: 'self' | 'partner' | 'gift' | 'other';
+}
+
+export interface WeddingConfig {
+	target_amount: number;
+	target_date: string;
+	bride_name: string;
+	groom_name: string;
+	venue: string;
+}
+
+export interface WeddingSummary {
+	config: WeddingConfig;
+	deposits: WeddingDeposit[];
+}

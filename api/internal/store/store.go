@@ -78,6 +78,9 @@ func (s *Store) EnsureSchema(ctx context.Context) error {
 	if err := s.migrateSalaryMasters(ctx); err != nil {
 		return err
 	}
+	if err := s.migrateWeddingSavings(ctx); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -783,4 +786,159 @@ func PeriodRank(period string) int {
 	default:
 		return 99
 	}
+}
+
+// --- Wedding Savings ---
+
+func (s *Store) migrateWeddingSavings(ctx context.Context) error {
+	if _, err := s.DB.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS wedding_config (
+			account_id BIGINT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+			target_amount BIGINT NOT NULL DEFAULT 50000000,
+			target_date DATE,
+			bride_name TEXT NOT NULL DEFAULT '',
+			groom_name TEXT NOT NULL DEFAULT '',
+			venue TEXT NOT NULL DEFAULT '',
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`); err != nil {
+		return err
+	}
+
+	if _, err := s.DB.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS wedding_deposits (
+			id BIGSERIAL PRIMARY KEY,
+			account_id BIGINT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+			deposit_date DATE NOT NULL,
+			amount BIGINT NOT NULL CHECK (amount > 0),
+			note TEXT NOT NULL DEFAULT '',
+			source TEXT NOT NULL DEFAULT 'self' CHECK (source IN ('self', 'partner', 'gift', 'other')),
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`); err != nil {
+		return err
+	}
+
+	if _, err := s.DB.Exec(ctx, `
+		CREATE INDEX IF NOT EXISTS idx_wedding_deposits_account ON wedding_deposits (account_id, deposit_date DESC)`); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *Store) GetWeddingConfig(ctx context.Context, accountID int64) (types.WeddingConfig, error) {
+	cfg := types.WeddingConfig{TargetAmount: 50000000}
+	var targetDate *time.Time
+	err := s.DB.QueryRow(ctx, `
+		SELECT target_amount, target_date, bride_name, groom_name, venue
+		FROM wedding_config
+		WHERE account_id = $1`,
+		accountID,
+	).Scan(&cfg.TargetAmount, &targetDate, &cfg.BrideName, &cfg.GroomName, &cfg.Venue)
+	if err != nil {
+		// Return defaults if no config exists
+		return types.WeddingConfig{TargetAmount: 50000000}, nil
+	}
+	if targetDate != nil {
+		cfg.TargetDate = targetDate.Format(types.DateLayout)
+	}
+	return cfg, nil
+}
+
+func (s *Store) UpsertWeddingConfig(ctx context.Context, accountID int64, cfg types.WeddingConfig) (types.WeddingConfig, error) {
+	var targetDate *time.Time
+	if cfg.TargetDate != "" {
+		t, _ := time.Parse(types.DateLayout, cfg.TargetDate)
+		targetDate = &t
+	}
+
+	_, err := s.DB.Exec(ctx, `
+		INSERT INTO wedding_config (account_id, target_amount, target_date, bride_name, groom_name, venue, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, NOW())
+		ON CONFLICT (account_id) DO UPDATE SET
+			target_amount = EXCLUDED.target_amount,
+			target_date = EXCLUDED.target_date,
+			bride_name = EXCLUDED.bride_name,
+			groom_name = EXCLUDED.groom_name,
+			venue = EXCLUDED.venue,
+			updated_at = NOW()`,
+		accountID, cfg.TargetAmount, targetDate, cfg.BrideName, cfg.GroomName, cfg.Venue,
+	)
+	if err != nil {
+		return types.WeddingConfig{}, err
+	}
+	return cfg, nil
+}
+
+func (s *Store) ListWeddingDeposits(ctx context.Context, accountID int64) ([]types.WeddingDeposit, error) {
+	rows, err := s.DB.Query(ctx, `
+		SELECT id, deposit_date, amount, note, source
+		FROM wedding_deposits
+		WHERE account_id = $1
+		ORDER BY deposit_date DESC, id DESC`,
+		accountID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]types.WeddingDeposit, 0)
+	for rows.Next() {
+		item := types.WeddingDeposit{}
+		var d time.Time
+		if err := rows.Scan(&item.ID, &d, &item.Amount, &item.Note, &item.Source); err != nil {
+			return nil, err
+		}
+		item.Date = d.Format(types.DateLayout)
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *Store) CreateWeddingDeposit(ctx context.Context, accountID int64, dep types.WeddingDeposit) (types.WeddingDeposit, error) {
+	d, _ := time.Parse(types.DateLayout, dep.Date)
+	created := types.WeddingDeposit{}
+	var dateOut time.Time
+	err := s.DB.QueryRow(ctx, `
+		INSERT INTO wedding_deposits (account_id, deposit_date, amount, note, source)
+		VALUES ($1, $2, $3, $4, $5)
+		RETURNING id, deposit_date, amount, note, source`,
+		accountID, d, dep.Amount, dep.Note, dep.Source,
+	).Scan(&created.ID, &dateOut, &created.Amount, &created.Note, &created.Source)
+	if err != nil {
+		return types.WeddingDeposit{}, err
+	}
+	created.Date = dateOut.Format(types.DateLayout)
+	return created, nil
+}
+
+func (s *Store) UpdateWeddingDeposit(ctx context.Context, accountID int64, id int64, dep types.WeddingDeposit) (types.WeddingDeposit, error) {
+	d, _ := time.Parse(types.DateLayout, dep.Date)
+	updated := types.WeddingDeposit{}
+	var dateOut time.Time
+	err := s.DB.QueryRow(ctx, `
+		UPDATE wedding_deposits
+		SET deposit_date = $1, amount = $2, note = $3, source = $4, updated_at = NOW()
+		WHERE id = $5 AND account_id = $6
+		RETURNING id, deposit_date, amount, note, source`,
+		d, dep.Amount, dep.Note, dep.Source, id, accountID,
+	).Scan(&updated.ID, &dateOut, &updated.Amount, &updated.Note, &updated.Source)
+	if err != nil {
+		return types.WeddingDeposit{}, err
+	}
+	updated.Date = dateOut.Format(types.DateLayout)
+	return updated, nil
+}
+
+func (s *Store) DeleteWeddingDeposit(ctx context.Context, accountID int64, id int64) error {
+	result, err := s.DB.Exec(ctx, `
+		DELETE FROM wedding_deposits WHERE id = $1 AND account_id = $2`,
+		id, accountID)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() == 0 {
+		return errors.New("setoran tidak ditemukan")
+	}
+	return nil
 }

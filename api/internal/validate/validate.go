@@ -76,3 +76,47 @@ func SalaryMasterInput(input types.SalaryMasterInput) (types.SalaryMaster, error
 		Note:   strings.TrimSpace(input.Note),
 	}, nil
 }
+
+func WeddingDepositInput(input types.WeddingDepositInput) (types.WeddingDeposit, error) {
+	dateValue := strings.TrimSpace(input.Date)
+	if _, err := time.Parse(types.DateLayout, dateValue); err != nil {
+		return types.WeddingDeposit{}, errors.New("tanggal harus berformat YYYY-MM-DD")
+	}
+
+	if input.Amount <= 0 {
+		return types.WeddingDeposit{}, errors.New("nominal setoran harus lebih dari 0")
+	}
+
+	source := strings.ToLower(strings.TrimSpace(input.Source))
+	if source != "self" && source != "partner" && source != "gift" && source != "other" {
+		return types.WeddingDeposit{}, errors.New("sumber harus self, partner, gift, atau other")
+	}
+
+	return types.WeddingDeposit{
+		Date:   dateValue,
+		Amount: input.Amount,
+		Note:   strings.TrimSpace(input.Note),
+		Source: source,
+	}, nil
+}
+
+func WeddingConfigInput(input types.WeddingConfig) (types.WeddingConfig, error) {
+	if input.TargetAmount <= 0 {
+		return types.WeddingConfig{}, errors.New("target harus lebih dari 0")
+	}
+
+	targetDate := strings.TrimSpace(input.TargetDate)
+	if targetDate != "" {
+		if _, err := time.Parse(types.DateLayout, targetDate); err != nil {
+			return types.WeddingConfig{}, errors.New("tanggal target harus berformat YYYY-MM-DD")
+		}
+	}
+
+	return types.WeddingConfig{
+		TargetAmount: input.TargetAmount,
+		TargetDate:   targetDate,
+		BrideName:    strings.TrimSpace(input.BrideName),
+		GroomName:    strings.TrimSpace(input.GroomName),
+		Venue:        strings.TrimSpace(input.Venue),
+	}, nil
+}

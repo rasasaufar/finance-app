@@ -59,6 +59,13 @@
 			shortLabel: 'Lap',
 			num: '06',
 			icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"></path><path d="M7 14l4-4 3 3 5-6"></path></svg>'
+		},
+		{
+			href: '/tabungan-nikah',
+			label: 'Tabungan Nikah',
+			shortLabel: 'Nikah',
+			num: '07',
+			icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="5"></circle><circle cx="16" cy="15" r="5"></circle><path d="M6 6l2 4M18 6l-2 4M9 4h6"></path></svg>'
 		}
 	];
 
@@ -113,6 +120,14 @@
 			{
 				label: 'Catat Transaksi',
 				href: '/transactions',
+				primary: true,
+				icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>'
+			}
+		],
+		'/tabungan-nikah': [
+			{
+				label: 'Setor Tabungan',
+				href: '/tabungan-nikah#form',
 				primary: true,
 				icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>'
 			}
