@@ -796,8 +796,8 @@ func (s *Store) migrateWeddingSavings(ctx context.Context) error {
 			account_id BIGINT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
 			target_amount BIGINT NOT NULL DEFAULT 50000000,
 			target_date DATE,
-			bride_name TEXT NOT NULL DEFAULT '',
-			groom_name TEXT NOT NULL DEFAULT '',
+			bride_name TEXT NOT NULL DEFAULT 'Ayu',
+			groom_name TEXT NOT NULL DEFAULT 'Rasas',
 			venue TEXT NOT NULL DEFAULT '',
 			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		)`); err != nil {
@@ -827,7 +827,7 @@ func (s *Store) migrateWeddingSavings(ctx context.Context) error {
 }
 
 func (s *Store) GetWeddingConfig(ctx context.Context, accountID int64) (types.WeddingConfig, error) {
-	cfg := types.WeddingConfig{TargetAmount: 50000000}
+	cfg := types.WeddingConfig{TargetAmount: 50000000, BrideName: "Ayu", GroomName: "Rasas"}
 	var targetDate *time.Time
 	err := s.DB.QueryRow(ctx, `
 		SELECT target_amount, target_date, bride_name, groom_name, venue
@@ -837,7 +837,7 @@ func (s *Store) GetWeddingConfig(ctx context.Context, accountID int64) (types.We
 	).Scan(&cfg.TargetAmount, &targetDate, &cfg.BrideName, &cfg.GroomName, &cfg.Venue)
 	if err != nil {
 		// Return defaults if no config exists
-		return types.WeddingConfig{TargetAmount: 50000000}, nil
+		return types.WeddingConfig{TargetAmount: 50000000, BrideName: "Ayu", GroomName: "Rasas"}, nil
 	}
 	if targetDate != nil {
 		cfg.TargetDate = targetDate.Format(types.DateLayout)
