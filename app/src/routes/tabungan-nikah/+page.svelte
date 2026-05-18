@@ -33,8 +33,8 @@
 	let config = $state<WeddingConfig>({
 		target_amount: 50_000_000,
 		target_date: '',
-		bride_name: '',
-		groom_name: '',
+		bride_name: 'Ayu',
+		groom_name: 'Rasas',
 		venue: ''
 	});
 	let deposits = $state<WeddingDeposit[]>([]);
@@ -57,6 +57,67 @@
 		toast = { message, tone };
 		if (toastTimer) clearTimeout(toastTimer);
 		toastTimer = setTimeout(() => (toast = null), 2400);
+	}
+
+	// Config form
+	let showConfigForm = $state(false);
+	let cfgBrideName = $state('');
+	let cfgGroomName = $state('');
+	let cfgTargetAmount = $state('');
+	let cfgTargetDate = $state('');
+	let cfgVenue = $state('');
+	let savingConfig = $state(false);
+
+	function openConfigForm(): void {
+		cfgBrideName = config.bride_name;
+		cfgGroomName = config.groom_name;
+		cfgTargetAmount = String(config.target_amount);
+		cfgTargetDate = config.target_date;
+		cfgVenue = config.venue;
+		showConfigForm = true;
+	}
+
+	function closeConfigForm(): void {
+		showConfigForm = false;
+	}
+
+	async function handleSaveConfig(event: SubmitEvent): Promise<void> {
+		event.preventDefault();
+		const amount = Number(cfgTargetAmount);
+		if (!Number.isFinite(amount) || amount <= 0) {
+			showToast('Target harus lebih dari 0', 'warn');
+			return;
+		}
+		if (!cfgBrideName.trim()) {
+			showToast('Nama mempelai wanita wajib diisi', 'warn');
+			return;
+		}
+		if (!cfgGroomName.trim()) {
+			showToast('Nama mempelai pria wajib diisi', 'warn');
+			return;
+		}
+
+		savingConfig = true;
+		try {
+			const updated = await api.put<WeddingConfig>('/wedding/config', {
+				target_amount: amount,
+				target_date: cfgTargetDate,
+				bride_name: cfgBrideName.trim(),
+				groom_name: cfgGroomName.trim(),
+				venue: cfgVenue.trim()
+			});
+			config = updated;
+			showConfigForm = false;
+			showToast('Pengaturan brankas diperbarui');
+		} catch (err) {
+			if (err instanceof ApiError) {
+				showToast(err.message, 'warn');
+			} else {
+				showToast('Gagal menyimpan pengaturan', 'warn');
+			}
+		} finally {
+			savingConfig = false;
+		}
 	}
 
 	// Delete confirmation
@@ -544,6 +605,77 @@
 			<div class="ledger-footer">
 				<span class="muted mono tiny-eyebrow">Total Brankas</span>
 				<span class="ledger-total money">{formatRupiah(total)}</span>
+			</div>
+		{/if}
+	</section>
+
+	<!-- ─── CLOSING QUOTE ─── -->
+	<aside class="vault-quote">
+
+	<!-- ─── CONFIG SETTINGS ─── -->
+	<section class="section-card config-card">
+		<div class="form-card-head">
+			<div>
+				<p class="muted mono tiny-eyebrow">Pengaturan · Brankas Nikah</p>
+				<h2 class="section-title">Pengaturan Brankas</h2>
+			</div>
+			{#if !showConfigForm}
+				<button class="button-secondary" type="button" onclick={openConfigForm}>
+					✎ Edit
+				</button>
+			{/if}
+		</div>
+
+		{#if showConfigForm}
+			<form class="form-grid" onsubmit={handleSaveConfig}>
+				<div class="form-row">
+					<label class="field">
+						<span>Nama Mempelai Wanita</span>
+						<input type="text" bind:value={cfgBrideName} placeholder="Contoh: Ayu" required />
+					</label>
+					<label class="field">
+						<span>Nama Mempelai Pria</span>
+						<input type="text" bind:value={cfgGroomName} placeholder="Contoh: Rasas" required />
+					</label>
+				</div>
+				<div class="form-row">
+					<label class="field">
+						<span>Target Tabungan (Rp)</span>
+						<input type="number" bind:value={cfgTargetAmount} min="1" placeholder="50000000" required />
+					</label>
+					<DatePicker bind:value={cfgTargetDate} label="Tanggal Target Akad" />
+				</div>
+				<div class="form-row">
+					<label class="field">
+						<span>Venue / Tempat (opsional)</span>
+						<input type="text" bind:value={cfgVenue} placeholder="Contoh: Gedung Serbaguna" />
+					</label>
+				</div>
+				<div class="button-row">
+					<button class="button-primary lux-primary" type="submit" disabled={savingConfig}>
+						Simpan Pengaturan
+					</button>
+					<button class="button-secondary" type="button" onclick={closeConfigForm}>Batal</button>
+				</div>
+			</form>
+		{:else}
+			<div class="config-summary">
+				<div class="config-row">
+					<span class="config-label">Mempelai</span>
+					<span class="config-value">{config.bride_name || '—'} & {config.groom_name || '—'}</span>
+				</div>
+				<div class="config-row">
+					<span class="config-label">Target</span>
+					<span class="config-value">{formatRupiah(config.target_amount)}</span>
+				</div>
+				<div class="config-row">
+					<span class="config-label">Tanggal Akad</span>
+					<span class="config-value">{config.target_date ? targetDateLabel : '—'}</span>
+				</div>
+				<div class="config-row">
+					<span class="config-label">Venue</span>
+					<span class="config-value">{config.venue || '—'}</span>
+				</div>
 			</div>
 		{/if}
 	</section>
@@ -1444,5 +1576,42 @@
 
 	:global([data-theme='dark']) .quick-chip:hover {
 		color: var(--paper);
+	}
+
+	/* ─────────────────────────────────────────────────────────
+	   CONFIG SETTINGS
+	   ───────────────────────────────────────────────────────── */
+	.config-summary {
+		display: grid;
+		gap: 0;
+		border: 1px solid var(--rule);
+		margin-top: 0.75rem;
+	}
+
+	.config-row {
+		display: flex;
+		justify-content: space-between;
+		align-items: baseline;
+		padding: 0.75rem 1rem;
+		border-bottom: 1px solid var(--rule);
+	}
+
+	.config-row:last-child {
+		border-bottom: none;
+	}
+
+	.config-label {
+		font-family: var(--font-mono);
+		font-size: 0.7rem;
+		letter-spacing: 0.15em;
+		text-transform: uppercase;
+		color: var(--ink-soft);
+	}
+
+	.config-value {
+		font-family: var(--font-display);
+		font-size: 1rem;
+		color: var(--ink);
+		font-style: italic;
 	}
 </style>

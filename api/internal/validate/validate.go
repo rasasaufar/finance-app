@@ -112,11 +112,21 @@ func WeddingConfigInput(input types.WeddingConfig) (types.WeddingConfig, error) 
 		}
 	}
 
+	brideName := strings.TrimSpace(input.BrideName)
+	if brideName == "" {
+		return types.WeddingConfig{}, errors.New("nama mempelai wanita tidak boleh kosong")
+	}
+
+	groomName := strings.TrimSpace(input.GroomName)
+	if groomName == "" {
+		return types.WeddingConfig{}, errors.New("nama mempelai pria tidak boleh kosong")
+	}
+
 	return types.WeddingConfig{
 		TargetAmount: input.TargetAmount,
 		TargetDate:   targetDate,
-		BrideName:    strings.TrimSpace(input.BrideName),
-		GroomName:    strings.TrimSpace(input.GroomName),
+		BrideName:    brideName,
+		GroomName:    groomName,
 		Venue:        strings.TrimSpace(input.Venue),
 	}, nil
 }
