@@ -86,12 +86,13 @@ func (s *Store) EnsureSchema(ctx context.Context) error {
 }
 
 func (s *Store) migrateCategories(ctx context.Context) error {
-	// Create table if not exists (new schema with account_id)
+	// Create table if not exists (new schema with account_id and type)
 	if _, err := s.DB.Exec(ctx, `
 		CREATE TABLE IF NOT EXISTS categories (
 			id BIGSERIAL PRIMARY KEY,
 			account_id BIGINT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
 			name TEXT NOT NULL,
+			type TEXT NOT NULL DEFAULT 'expense' CHECK (type IN ('income', 'expense')),
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 			UNIQUE (account_id, name)
 		)`); err != nil {
@@ -102,6 +103,13 @@ func (s *Store) migrateCategories(ctx context.Context) error {
 		ALTER TABLE categories ADD COLUMN IF NOT EXISTS account_id BIGINT REFERENCES accounts(id) ON DELETE CASCADE`); err != nil {
 		return err
 	}
+	// Add type column if missing (migration for existing DB)
+	if _, err := s.DB.Exec(ctx, `
+		ALTER TABLE categories ADD COLUMN IF NOT EXISTS type TEXT NOT NULL DEFAULT 'expense'`); err != nil {
+		return err
+	}
+	// Migrate existing "Gaji" categories to income type
+	_, _ = s.DB.Exec(ctx, `UPDATE categories SET type = 'income' WHERE LOWER(name) = 'gaji' AND type = 'expense'`)
 	// Drop old single-column unique constraint if it exists (ignore error if not found)
 	_, _ = s.DB.Exec(ctx, `ALTER TABLE categories DROP CONSTRAINT IF EXISTS categories_name_key`)
 	_, _ = s.DB.Exec(ctx, `DROP INDEX IF EXISTS uq_categories_lower_name`)
@@ -214,12 +222,24 @@ func (s *Store) SeedDefaults(ctx context.Context) error {
 	}
 
 	// Seed default categories for admin
-	defaultCategories := []string{"Makan", "Bensin", "Transport", "Belanja", "Hiburan", "Tagihan", "Gaji"}
-	for _, name := range defaultCategories {
+	type catSeed struct {
+		Name string
+		Type string
+	}
+	defaultCategories := []catSeed{
+		{"Makan", "expense"},
+		{"Bensin", "expense"},
+		{"Transport", "expense"},
+		{"Belanja", "expense"},
+		{"Hiburan", "expense"},
+		{"Tagihan", "expense"},
+		{"Gaji", "income"},
+	}
+	for _, cat := range defaultCategories {
 		if _, err := s.DB.Exec(ctx, `
-			INSERT INTO categories (account_id, name) VALUES ($1, $2)
+			INSERT INTO categories (account_id, name, type) VALUES ($1, $2, $3)
 			ON CONFLICT DO NOTHING`,
-			adminID, name,
+			adminID, cat.Name, cat.Type,
 		); err != nil {
 			return err
 		}
@@ -377,12 +397,24 @@ func (s *Store) DeleteAccount(ctx context.Context, id int64) error {
 
 // SeedDefaultCategoriesForAccount seeds default categories for a newly created account.
 func (s *Store) SeedDefaultCategoriesForAccount(ctx context.Context, accountID int64) error {
-	defaultCategories := []string{"Makan", "Bensin", "Transport", "Belanja", "Hiburan", "Tagihan", "Gaji"}
-	for _, name := range defaultCategories {
+	type catSeed struct {
+		Name string
+		Type string
+	}
+	defaultCategories := []catSeed{
+		{"Makan", "expense"},
+		{"Bensin", "expense"},
+		{"Transport", "expense"},
+		{"Belanja", "expense"},
+		{"Hiburan", "expense"},
+		{"Tagihan", "expense"},
+		{"Gaji", "income"},
+	}
+	for _, cat := range defaultCategories {
 		if _, err := s.DB.Exec(ctx, `
-			INSERT INTO categories (account_id, name) VALUES ($1, $2)
+			INSERT INTO categories (account_id, name, type) VALUES ($1, $2, $3)
 			ON CONFLICT DO NOTHING`,
-			accountID, name,
+			accountID, cat.Name, cat.Type,
 		); err != nil {
 			return err
 		}
@@ -499,7 +531,7 @@ func (s *Store) ListTransactions(ctx context.Context, accountID int64) ([]types.
 
 func (s *Store) ListCategories(ctx context.Context, accountID int64) ([]types.Category, error) {
 	rows, err := s.DB.Query(ctx, `
-		SELECT id, name FROM categories
+		SELECT id, name, type FROM categories
 		WHERE account_id = $1
 		ORDER BY name ASC`,
 		accountID)
@@ -511,7 +543,7 @@ func (s *Store) ListCategories(ctx context.Context, accountID int64) ([]types.Ca
 	items := make([]types.Category, 0)
 	for rows.Next() {
 		item := types.Category{}
-		if err := rows.Scan(&item.ID, &item.Name); err != nil {
+		if err := rows.Scan(&item.ID, &item.Name, &item.Type); err != nil {
 			return nil, err
 		}
 		items = append(items, item)
@@ -523,11 +555,11 @@ func (s *Store) ListCategories(ctx context.Context, accountID int64) ([]types.Ca
 func (s *Store) FindCategoryByName(ctx context.Context, accountID int64, name string) (types.Category, error) {
 	item := types.Category{}
 	err := s.DB.QueryRow(ctx, `
-		SELECT id, name FROM categories
+		SELECT id, name, type FROM categories
 		WHERE account_id = $1 AND LOWER(name) = LOWER($2)
 		ORDER BY id LIMIT 1`,
 		accountID, strings.TrimSpace(name),
-	).Scan(&item.ID, &item.Name)
+	).Scan(&item.ID, &item.Name, &item.Type)
 	if err != nil {
 		return types.Category{}, err
 	}
@@ -537,10 +569,10 @@ func (s *Store) FindCategoryByName(ctx context.Context, accountID int64, name st
 func (s *Store) FindCategoryByID(ctx context.Context, accountID int64, id int64) (types.Category, error) {
 	item := types.Category{}
 	err := s.DB.QueryRow(ctx, `
-		SELECT id, name FROM categories
+		SELECT id, name, type FROM categories
 		WHERE account_id = $1 AND id = $2`,
 		accountID, id,
-	).Scan(&item.ID, &item.Name)
+	).Scan(&item.ID, &item.Name, &item.Type)
 	if err != nil {
 		return types.Category{}, err
 	}

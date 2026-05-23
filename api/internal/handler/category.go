@@ -18,6 +18,19 @@ func (h *Handler) HandleGetCategories(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteInternalServerError(w, err)
 		return
 	}
+
+	// Optional filter by type query param
+	filterType := r.URL.Query().Get("type")
+	if filterType == "income" || filterType == "expense" {
+		filtered := make([]types.Category, 0)
+		for _, c := range categories {
+			if c.Type == filterType {
+				filtered = append(filtered, c)
+			}
+		}
+		categories = filtered
+	}
+
 	httputil.WriteJSON(w, http.StatusOK, categories)
 }
 
@@ -31,6 +44,15 @@ func (h *Handler) HandleCreateCategory(w http.ResponseWriter, r *http.Request) {
 	name := strings.TrimSpace(input.Name)
 	if name == "" {
 		httputil.WriteError(w, http.StatusBadRequest, "nama kategori wajib diisi")
+		return
+	}
+
+	catType := strings.TrimSpace(input.Type)
+	if catType == "" {
+		catType = "expense"
+	}
+	if catType != "income" && catType != "expense" {
+		httputil.WriteError(w, http.StatusBadRequest, "tipe kategori harus 'income' atau 'expense'")
 		return
 	}
 
@@ -50,9 +72,9 @@ func (h *Handler) HandleCreateCategory(w http.ResponseWriter, r *http.Request) {
 	category := types.Category{}
 	err = h.Store.DB.QueryRow(
 		ctx,
-		`INSERT INTO categories (account_id, name) VALUES ($1, $2) RETURNING id, name`,
-		accountID, name,
-	).Scan(&category.ID, &category.Name)
+		`INSERT INTO categories (account_id, name, type) VALUES ($1, $2, $3) RETURNING id, name, type`,
+		accountID, name, catType,
+	).Scan(&category.ID, &category.Name, &category.Type)
 	if err != nil {
 		if isUniqueViolation(err) {
 			httputil.WriteError(w, http.StatusBadRequest, "nama kategori sudah ada")
@@ -84,6 +106,15 @@ func (h *Handler) HandleUpdateCategory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	catType := strings.TrimSpace(input.Type)
+	if catType == "" {
+		catType = "expense"
+	}
+	if catType != "income" && catType != "expense" {
+		httputil.WriteError(w, http.StatusBadRequest, "tipe kategori harus 'income' atau 'expense'")
+		return
+	}
+
 	ctx := r.Context()
 	accountID := middleware.UserIDFromContext(ctx)
 
@@ -100,9 +131,9 @@ func (h *Handler) HandleUpdateCategory(w http.ResponseWriter, r *http.Request) {
 	category := types.Category{}
 	err = h.Store.DB.QueryRow(
 		ctx,
-		`UPDATE categories SET name = $1 WHERE id = $2 AND account_id = $3 RETURNING id, name`,
-		name, id, accountID,
-	).Scan(&category.ID, &category.Name)
+		`UPDATE categories SET name = $1, type = $2 WHERE id = $3 AND account_id = $4 RETURNING id, name, type`,
+		name, catType, id, accountID,
+	).Scan(&category.ID, &category.Name, &category.Type)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			httputil.WriteError(w, http.StatusNotFound, "kategori tidak ditemukan")

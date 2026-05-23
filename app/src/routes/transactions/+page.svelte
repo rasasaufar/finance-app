@@ -40,6 +40,11 @@
 	let filterType = $state<'all' | TransactionType>('all');
 	let filterCategory = $state('');
 
+	// Categories filtered by selected transaction type for the form
+	const formCategories = $derived(
+		categories.filter((c) => c.type === type)
+	);
+
 
 	const todayLabel = new Intl.DateTimeFormat('id-ID', {
 		weekday: 'long',
@@ -161,8 +166,11 @@
 			transactions = toTransactionArray(transactionsResponse);
 			categories = toCategoryArray(categoriesResponse);
 
-			if (!category && categories.length > 0) {
-				category = categories[0].name;
+			if (!category) {
+				const matching = categories.filter((c) => c.type === type);
+				if (matching.length > 0) {
+					category = matching[0].name;
+				}
 			}
 		} catch (error) {
 			if (error instanceof ApiError) {
@@ -339,7 +347,7 @@
 			<div class="form-row">
 				<label class="field">
 					<span>Tipe</span>
-					<select bind:value={type}>
+					<select bind:value={type} onchange={() => { category = ''; }}>
 						<option value="income">Pemasukan</option>
 						<option value="expense">Pengeluaran</option>
 					</select>
@@ -349,7 +357,7 @@
 					<span>Kategori</span>
 					<select bind:value={category} required>
 						<option value="" disabled>Pilih kategori</option>
-						{#each categories as item}
+						{#each formCategories as item}
 							<option value={item.name}>{item.name}</option>
 						{/each}
 					</select>

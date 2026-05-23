@@ -95,10 +95,12 @@ type TransactionMutationResponse struct {
 type Category struct {
 	ID   int64  `json:"id"`
 	Name string `json:"name"`
+	Type string `json:"type"` // "income" or "expense"
 }
 
 type CategoryInput struct {
 	Name string `json:"name"`
+	Type string `json:"type"` // "income" or "expense"
 }
 
 // --- Budget ---

@@ -27,8 +27,9 @@
 		editingId = null;
 		period = 'daily';
 		limit = '';
-		if (categories.length > 0) {
-			category = categories[0].name;
+		const expenseCategories = categories.filter((c) => c.type === 'expense');
+		if (expenseCategories.length > 0) {
+			category = expenseCategories[0].name;
 		}
 	}
 
@@ -49,7 +50,10 @@
 			rules = rulesResponse;
 			categories = categoriesResponse;
 			if (!category && categoriesResponse.length > 0) {
-				category = categoriesResponse[0].name;
+				const expenseCategories = categoriesResponse.filter((c) => c.type === 'expense');
+				if (expenseCategories.length > 0) {
+					category = expenseCategories[0].name;
+				}
 			}
 		} catch (error) {
 			if (error instanceof ApiError) {
@@ -179,7 +183,7 @@
 					<span>Kategori</span>
 					<select bind:value={category}>
 						<option value="" disabled>Pilih kategori</option>
-						{#each categories as item}
+						{#each categories.filter((c) => c.type === 'expense') as item}
 							<option value={item.name}>{item.name}</option>
 						{/each}
 					</select>

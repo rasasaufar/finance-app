@@ -15,6 +15,7 @@ export interface LoginResponse {
 export interface Category {
 	id: number;
 	name: string;
+	type: TransactionType;
 }
 
 export interface Transaction {

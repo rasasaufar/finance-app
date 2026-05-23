@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { api, ApiError } from '$lib/api';
-	import type { Category } from '$lib/types';
+	import type { Category, TransactionType } from '$lib/types';
 	import { categoryColor } from '$lib/format';
 
 	let loading = $state(true);
@@ -9,8 +9,10 @@
 	let categories = $state<Category[]>([]);
 	let editingId = $state<number | null>(null);
 	let name = $state('');
+	let categoryType = $state<TransactionType>('expense');
 	let errorMessage = $state('');
 	let successMessage = $state('');
+	let viewFilter = $state<'all' | TransactionType>('all');
 
 	// Confirm modal state
 	let confirmModal = $state<{
@@ -19,12 +21,14 @@
 		categoryName: string;
 		categoryId: number | null;
 		pendingName: string;
+		pendingType: TransactionType;
 	}>({
 		open: false,
 		type: 'add',
 		categoryName: '',
 		categoryId: null,
-		pendingName: ''
+		pendingName: '',
+		pendingType: 'expense'
 	});
 
 	const todayLabel = new Intl.DateTimeFormat('id-ID', {
@@ -33,6 +37,10 @@
 		month: 'long',
 		year: 'numeric'
 	}).format(new Date());
+
+	const filteredCategories = $derived(
+		viewFilter === 'all' ? categories : categories.filter((c) => c.type === viewFilter)
+	);
 
 	function clearMessages(): void {
 		errorMessage = '';
@@ -58,11 +66,13 @@
 	function startEdit(category: Category): void {
 		editingId = category.id;
 		name = category.name;
+		categoryType = category.type;
 	}
 
 	function cancelEdit(): void {
 		editingId = null;
 		name = '';
+		categoryType = 'expense';
 	}
 
 	function closeModal(): void {
@@ -81,7 +91,7 @@
 
 		if (editingId) {
 			// Edit langsung tanpa konfirmasi
-			doSave(trimmedName);
+			doSave(trimmedName, categoryType);
 		} else {
 			// Tampilkan konfirmasi tambah
 			confirmModal = {
@@ -89,20 +99,21 @@
 				type: 'add',
 				categoryName: trimmedName,
 				categoryId: null,
-				pendingName: trimmedName
+				pendingName: trimmedName,
+				pendingType: categoryType
 			};
 		}
 	}
 
-	async function doSave(trimmedName: string): Promise<void> {
+	async function doSave(trimmedName: string, catType: TransactionType): Promise<void> {
 		saving = true;
 		clearMessages();
 		try {
 			if (editingId) {
-				await api.put<Category>(`/categories/${editingId}`, { name: trimmedName });
+				await api.put<Category>(`/categories/${editingId}`, { name: trimmedName, type: catType });
 				successMessage = 'Kategori berhasil diperbarui.';
 			} else {
-				await api.post<Category>('/categories', { name: trimmedName });
+				await api.post<Category>('/categories', { name: trimmedName, type: catType });
 				successMessage = 'Kategori berhasil ditambahkan.';
 			}
 
@@ -125,14 +136,15 @@
 			type: 'delete',
 			categoryName: category.name,
 			categoryId: category.id,
-			pendingName: ''
+			pendingName: '',
+			pendingType: 'expense'
 		};
 	}
 
 	async function confirmAction(): Promise<void> {
 		closeModal();
 		if (confirmModal.type === 'add') {
-			await doSave(confirmModal.pendingName);
+			await doSave(confirmModal.pendingName, confirmModal.pendingType);
 		} else if (confirmModal.type === 'delete' && confirmModal.categoryId !== null) {
 			await doDelete(confirmModal.categoryId);
 		}
@@ -191,10 +203,20 @@
 		{/if}
 
 		<form class="form-grid" onsubmit={handleSubmit}>
-			<label class="field">
-				<span>Nama Kategori</span>
-				<input type="text" bind:value={name} placeholder="Contoh: Pendidikan" required />
-			</label>
+			<div class="form-row">
+				<label class="field">
+					<span>Nama Kategori</span>
+					<input type="text" bind:value={name} placeholder="Contoh: Pendidikan" required />
+				</label>
+
+				<label class="field">
+					<span>Tipe</span>
+					<select bind:value={categoryType}>
+						<option value="expense">Pengeluaran</option>
+						<option value="income">Pemasukan</option>
+					</select>
+				</label>
+			</div>
 
 			<div class="button-row">
 				<button class="button-primary" type="submit" disabled={saving}>
@@ -212,17 +234,52 @@
 		<p class="section-lede">
 			Total {categories.length} kategori aktif.
 		</p>
+
+		<div class="filter-strip">
+			<div class="filter-group" role="group" aria-label="Filter tipe kategori">
+				<button
+					class="filter-chip"
+					class:is-active={viewFilter === 'all'}
+					type="button"
+					onclick={() => (viewFilter = 'all')}
+				>
+					Semua · {categories.length}
+				</button>
+				<button
+					class="filter-chip"
+					class:is-active={viewFilter === 'expense'}
+					type="button"
+					onclick={() => (viewFilter = 'expense')}
+				>
+					Pengeluaran · {categories.filter((c) => c.type === 'expense').length}
+				</button>
+				<button
+					class="filter-chip"
+					class:is-active={viewFilter === 'income'}
+					type="button"
+					onclick={() => (viewFilter = 'income')}
+				>
+					Pemasukan · {categories.filter((c) => c.type === 'income').length}
+				</button>
+			</div>
+		</div>
+
 		{#if loading}
 			<p class="muted mono">Memuat daftar kategori…</p>
 		{:else if categories.length === 0}
 			<p class="muted">Belum ada kategori. Silakan tambah yang pertama.</p>
+		{:else if filteredCategories.length === 0}
+			<p class="muted">Tidak ada kategori yang cocok dengan filter.</p>
 		{:else}
 			<ul class="cat-list">
-				{#each categories as category, i}
+				{#each filteredCategories as category, i}
 					<li class="cat-row" class:is-editing={editingId === category.id}>
 						<span class="cat-num">{String(i + 1).padStart(2, '0')}</span>
 						<span class="cat-dot cat-dot-lg" style="background: {categoryColor(category.name)};"></span>
 						<span class="cat-name">{category.name}</span>
+						<span class="cat-type-badge" data-type={category.type}>
+							{category.type === 'income' ? 'Masuk' : 'Keluar'}
+						</span>
 						<span class="leader"></span>
 						<div class="cat-actions">
 							<button class="button-ghost" type="button" onclick={() => startEdit(category)}
@@ -260,7 +317,7 @@
 				<p class="modal-icon">✦</p>
 				<h3 class="modal-title">Tambah Kategori?</h3>
 				<p class="modal-body">
-					Kategori baru <strong>"{confirmModal.categoryName}"</strong> akan ditambahkan ke daftar.
+					Kategori baru <strong>"{confirmModal.categoryName}"</strong> ({confirmModal.pendingType === 'income' ? 'Pemasukan' : 'Pengeluaran'}) akan ditambahkan ke daftar.
 				</p>
 				<div class="modal-actions">
 					<button class="button-secondary" type="button" onclick={closeModal}>Batal</button>
@@ -317,6 +374,26 @@
 		line-height: 1;
 	}
 
+	.cat-type-badge {
+		font-family: var(--font-mono);
+		font-size: 0.65rem;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		padding: 0.15rem 0.5rem;
+		border-radius: 2px;
+		line-height: 1;
+	}
+
+	.cat-type-badge[data-type='income'] {
+		color: var(--green, #4a7c59);
+		border: 1px solid var(--green, #4a7c59);
+	}
+
+	.cat-type-badge[data-type='expense'] {
+		color: var(--oxblood, #8b3a3a);
+		border: 1px solid var(--oxblood, #8b3a3a);
+	}
+
 	.cat-actions {
 		display: flex;
 		gap: 1rem;
@@ -331,6 +408,51 @@
 	.button-ghost.danger:hover {
 		color: var(--ink);
 		border-bottom-color: var(--ink);
+	}
+
+	.filter-strip {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.75rem;
+		align-items: center;
+		margin-bottom: 1rem;
+	}
+
+	.filter-group {
+		display: flex;
+		gap: 0.35rem;
+		flex-wrap: wrap;
+	}
+
+	.filter-chip {
+		font-family: var(--font-mono);
+		font-size: 0.7rem;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		padding: 0.4rem 0.75rem;
+		border: 1px solid var(--rule);
+		background: transparent;
+		color: var(--ink-muted);
+		cursor: pointer;
+		transition: all 0.15s;
+	}
+
+	.filter-chip.is-active {
+		background: var(--ink);
+		color: var(--paper);
+		border-color: var(--ink);
+	}
+
+	.form-row {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 1rem;
+	}
+
+	@media (max-width: 480px) {
+		.form-row {
+			grid-template-columns: 1fr;
+		}
 	}
 
 	/* ── Confirm Modal ── */
