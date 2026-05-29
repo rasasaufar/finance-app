@@ -196,8 +196,21 @@ func (s *Store) migrateSalaryMasters(ctx context.Context) error {
 }
 
 // SeedDefaults inserts the default admin account and its default categories/budget rules.
+// It only runs on a fresh database (no accounts yet). Once any account exists,
+// this is a no-op so deploys don't re-create the seed admin after the user
+// deletes it.
 func (s *Store) SeedDefaults(ctx context.Context) error {
-	// Upsert admin account
+	// Skip seeding entirely if any account already exists.
+	// This prevents the default "Rasa Saufar" admin from coming back on every deploy.
+	var existingAccounts int64
+	if err := s.DB.QueryRow(ctx, `SELECT COUNT(*) FROM accounts`).Scan(&existingAccounts); err != nil {
+		return err
+	}
+	if existingAccounts > 0 {
+		return nil
+	}
+
+	// Fresh DB: create the bootstrap admin account.
 	var adminID int64
 	err := s.DB.QueryRow(ctx, `
 		INSERT INTO accounts (full_name, email, password_hash, role)
