@@ -37,7 +37,7 @@ func (h *Handler) HandleDashboardSummary(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	salaryTotalToDate, err := h.Store.SalaryToMonth(ctx, accountID, month)
+	salaryTotalToDate, err := h.Store.SalaryTotalAll(ctx, accountID)
 	if err != nil {
 		httputil.WriteInternalServerError(w, err)
 		return

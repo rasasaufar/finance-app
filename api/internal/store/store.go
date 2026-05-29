@@ -787,6 +787,23 @@ func (s *Store) SalaryToMonth(ctx context.Context, accountID int64, month string
 	return total, nil
 }
 
+// SalaryTotalAll returns the sum of all salary masters for the account,
+// regardless of month. Useful so future-month salaries are still visible
+// on the dashboard balance.
+func (s *Store) SalaryTotalAll(ctx context.Context, accountID int64) (int64, error) {
+	var total int64
+	err := s.DB.QueryRow(ctx, `
+		SELECT COALESCE(SUM(amount), 0)
+		FROM salary_masters
+		WHERE account_id = $1`,
+		accountID,
+	).Scan(&total)
+	if err != nil {
+		return 0, err
+	}
+	return total, nil
+}
+
 // --- Helpers ---
 
 func BuildBudgetCheck(category, period string, limit, used int64) types.BudgetCheck {
