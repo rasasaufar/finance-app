@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5"
+	"golang.org/x/crypto/bcrypt"
+
 	"github.com/rasasaufar/finance-app/api/internal/httputil"
 	"github.com/rasasaufar/finance-app/api/internal/middleware"
 	"github.com/rasasaufar/finance-app/api/internal/types"
@@ -41,7 +43,7 @@ func (h *Handler) HandleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if account.PasswordHash != password {
+	if err := bcrypt.CompareHashAndPassword([]byte(account.PasswordHash), []byte(password)); err != nil {
 		httputil.WriteError(w, http.StatusUnauthorized, "email atau password salah")
 		return
 	}
