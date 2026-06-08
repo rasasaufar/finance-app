@@ -3,12 +3,10 @@ package types
 import "time"
 
 const (
-	HardcodedEmail    = "***REMOVED***"
-	HardcodedPassword = "***REMOVED***"
-	DateLayout        = "2006-01-02"
-	MonthLayout       = "2006-01"
-	RoleAdmin         = "admin"
-	RoleUser          = "user"
+	DateLayout  = "2006-01-02"
+	MonthLayout = "2006-01"
+	RoleAdmin   = "admin"
+	RoleUser    = "user"
 )
 
 // --- Context keys ---
