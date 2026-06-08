@@ -54,8 +54,8 @@ Use Indonesian Rupiah formatting for money.
 - Use in-memory data only for now.
 - Do not add database yet.
 - Use hardcoded login for now:
-  - email: ***REMOVED***
-  - password: ***REMOVED***
+  - email: rasas@example.com
+  - password: password123
 - Return a dummy token after login.
 
 ## Run Commands

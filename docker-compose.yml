@@ -7,6 +7,8 @@ services:
     restart: unless-stopped
     environment:
       - DATABASE_URL=postgres://finance_user:finance_pass_2026@host.docker.internal:5432/finance_app?sslmode=disable
+    env_file:
+      - .env
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
