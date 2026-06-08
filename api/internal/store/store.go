@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"errors"
+	"log"
+	"os"
 	"sort"
 	"strings"
 	"time"
@@ -211,14 +213,24 @@ func (s *Store) SeedDefaults(ctx context.Context) error {
 	}
 
 	// Fresh DB: create the bootstrap admin account.
+	seedEmail := os.Getenv("SEED_ADMIN_EMAIL")
+	if seedEmail == "" {
+		seedEmail = "admin@finance-app.local"
+	}
+	seedPassword := os.Getenv("SEED_ADMIN_PASSWORD")
+	if seedPassword == "" {
+		log.Println("WARNING: SEED_ADMIN_PASSWORD not set, seed admin will have empty password")
+	}
+
 	var adminID int64
+
 	err := s.DB.QueryRow(ctx, `
-		INSERT INTO accounts (full_name, email, password_hash, role)
-		VALUES ('Rasa Saufar', $1, $2, 'admin')
-		ON CONFLICT (email) DO UPDATE SET role = 'admin'
-		RETURNING id`,
-		types.HardcodedEmail,
-		types.HardcodedPassword,
+        INSERT INTO accounts (full_name, email, password_hash, role)
+        VALUES ('Rasa Saufar', $1, $2, 'admin')
+        ON CONFLICT (email) DO UPDATE SET role = 'admin'
+        RETURNING id`,
+		seedEmail,
+		seedPassword,
 	).Scan(&adminID)
 	if err != nil {
 		return err
